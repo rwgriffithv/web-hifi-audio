@@ -7,28 +7,22 @@
 template <typename T>
 util::DualBlockingQueue<T>::DualBlockingQueue(size_t capacity)
     : m_capacity(capacity),
-      m_clear(false)
+      m_flush(false),
+      m_num_wait(0)
 {
 }
 
 template <typename T>
 util::DualBlockingQueue<T>::~DualBlockingQueue()
 {
-    free();
+    flush();
 }
 
 template <typename T>
-void util::DualBlockingQueue<T>::initialize()
-{
-    std::lock_guard<std::mutex> lock(m_mtx);
-    m_initialized = true;
-}
-
-template <typename T>
-void util::DualBlockingQueue<T>::free()
+void util::DualBlockingQueue<T>::flush()
 {
     std::unique_lock<std::mutex> lock(m_mtx);
-    m_initialized = false;
+    m_flush = true;
     while (!m_queue.empty())
     {
         m_queue.pop();
@@ -38,15 +32,15 @@ void util::DualBlockingQueue<T>::free()
 }
 
 template <typename T>
-void util::DualBlockingQueue<T>::free(void (*op)(T &&value))
+void util::DualBlockingQueue<T>::flush(void (*op)(T &&value))
 {
     if (op == nullptr)
     {
-        free();
+        flush();
         return;
     }
     std::unique_lock<std::mutex> lock(m_mtx);
-    m_initialized = false;
+    m_flush = true;
     while (!m_queue.empty())
     {
         op(std::move(m_queue.front()));
@@ -59,29 +53,55 @@ void util::DualBlockingQueue<T>::free(void (*op)(T &&value))
 template <typename T>
 bool util::DualBlockingQueue<T>::push(const T &value)
 {
+    bool rv = false;
     std::unique_lock<std::mutex> lock(m_mtx);
+    if (m_flush)
+    {
+        return rv;
+    }
+    m_num_wait++;
     m_cond.wait(lock, [=]
-                { return !m_initialized || m_queue.size() < m_capacity });
-    if (m_initialized)
+                { return m_flush || m_queue.size() < m_capacity; });
+    m_num_wait--;
+    if (m_flush)
+    {
+        m_flush = m_num_wait != 0;
+    }
+    else
     {
         m_queue.push(value);
+        rv = true;
     }
     lock.unlock();
     m_cond.notify_all();
+    return rv;
 }
 
 template <typename T>
 bool util::DualBlockingQueue<T>::push(T &&value)
 {
+    bool rv = false;
     std::unique_lock<std::mutex> lock(m_mtx);
+    if (m_flush)
+    {
+        return rv;
+    }
+    m_num_wait++;
     m_cond.wait(lock, [=]
-                { !m_initialized || return m_queue.size() < m_capacity; });
-    if (m_initialized)
+                { return m_flush || m_queue.size() < m_capacity; });
+    m_num_wait--;
+    if (m_flush)
+    {
+        m_flush = m_num_wait != 0;
+    }
+    else
     {
         m_queue.push(std::move(value));
+        rv = true;
     }
     lock.unlock();
     m_cond.notify_all();
+    return rv;
 }
 
 template <typename T>
@@ -89,9 +109,19 @@ bool util::DualBlockingQueue<T>::pop(T &value)
 {
     bool rv = false;
     std::unique_lock<std::mutex> lock(m_mtx);
+    if (m_flush)
+    {
+        return rv;
+    }
+    m_num_wait++;
     m_cond.wait(lock, [=]
-                { return !m_initialized || !m_queue.empty(); });
-    if (m_initialized)
+                { return m_flush || !m_queue.empty(); });
+    m_num_wait--;
+    if (m_flush)
+    {
+        m_flush = m_num_wait != 0;
+    }
+    else
     {
         value = std::move(m_queue.front());
         m_queue.pop();
@@ -100,4 +130,17 @@ bool util::DualBlockingQueue<T>::pop(T &value)
     lock.unlock();
     m_cond.notify_all();
     return rv;
+}
+
+template <typename T>
+const size_t util::DualBlockingQueue<T>::capacity()
+{
+    return m_capacity;
+}
+
+template <typename T>
+const size_t util::DualBlockingQueue<T>::size()
+{
+    std::lock_guard<std::mutex> lock(m_mtx);
+    return m_queue.size();
 }
