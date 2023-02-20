@@ -18,4 +18,5 @@ namespace whfa
     protected:
         void thread_loop_body() override;
     };
+
 }

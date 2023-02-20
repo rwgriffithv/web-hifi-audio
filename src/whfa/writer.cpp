@@ -1,3 +1,7 @@
+/*
+@author Robert Griffith
+*/
+
 #include "writer.h"
 
 whfa::Writer::Writer(whfa::Context &context)

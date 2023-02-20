@@ -16,7 +16,7 @@ TODO: maybe (probably) refactor to get samplespec
 namespace whfa
 {
 
-    class Writer : public Context::Worker
+    class Writer : public virtual Context::Worker
     {
     public:
         Writer(Context &context);
