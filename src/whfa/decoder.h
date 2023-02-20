@@ -10,7 +10,7 @@ class for parallel decoding of packets from a queue into a frame queue
 namespace whfa
 {
 
-    class Decoder : public virtual Context::Worker
+    class Decoder : public Context::Worker
     {
     public:
         Decoder(Context &context);

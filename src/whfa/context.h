@@ -20,7 +20,7 @@ namespace whfa
     class Context
     {
     public:
-        class Worker : public virtual util::Threader
+        class Worker : public util::Threader
         {
         protected:
             Worker(Context &context);
