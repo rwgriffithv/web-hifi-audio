@@ -9,7 +9,7 @@ public methods
 */
 
 whfa::Decoder::Decoder(Context &context)
-    : Threader(context)
+    : Worker(context)
 {
 }
 
@@ -21,17 +21,17 @@ void whfa::Decoder::thread_loop_body()
 {
     std::mutex *cdc_lock;
     AVCodecContext *cdc_ctxt;
-    cdc_lock = m_ctxt->get_codec(&cdc_ctxt);
+    cdc_lock = _ctxt->get_codec(&cdc_ctxt);
     if (cdc_lock == nullptr)
     {
         set_state_stop();
         return;
     }
 
-    util::DualBlockingQueue<AVPacket *> *pkt_queue = m_ctxt->get_packet_queue();
-    util::DualBlockingQueue<AVFrame *> *frm_queue = m_ctxt->get_frame_queue();
+    util::DBPQueue<AVPacket> &pkt_queue = _ctxt->get_packet_queue();
+    util::DBPQueue<AVFrame> &fr_queue = _ctxt->get_frame_queue();
     AVPacket *packet;
-    if (!pkt_queue->pop(packet))
+    if (!pkt_queue.pop(packet))
     {
         return;
     }
@@ -46,9 +46,9 @@ void whfa::Decoder::thread_loop_body()
             rv = avcodec_receive_frame(cdc_ctxt, frame);
             if (rv == 0)
             {
-                if (frm_queue->push(frame))
+                if (fr_queue.push(frame))
                 {
-                    m_state.curr_pts = frame->pts;
+                    _state.curr_pts = frame->pts;
                     frame = nullptr;
                 }
             }
@@ -59,12 +59,14 @@ void whfa::Decoder::thread_loop_body()
         } while (rv == 0);
         if (rv != AVERROR(EAGAIN))
         {
-            set_state_averror(rv);
+            set_state_pause();
+            set_state_error(rv);
         }
     }
     else
     {
-        set_state_averror(rv);
+        set_state_pause();
+        set_state_error(rv);
     }
     cdc_lock->unlock();
 }

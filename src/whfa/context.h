@@ -6,7 +6,8 @@ also hold shared threadsafe queues for processing packets and frames
 */
 #pragma once
 
-#include "../util/dbqueue.h"
+#include "../util/dbpqueue.h"
+#include "../util/threader.h"
 
 extern "C"
 {
@@ -19,6 +20,20 @@ namespace whfa
     class Context
     {
     public:
+        class Worker : public virtual util::Threader
+        {
+        protected:
+            Worker(Context &context);
+            Context *_ctxt;
+        };
+
+        struct SampleSpec
+        {
+            AVSampleFormat format;
+            int channels;
+            int rate;
+        };
+
         static void register_formats();
         static void enable_networking();
         static void disable_networking();
@@ -26,7 +41,7 @@ namespace whfa
         Context(size_t packet_queue_capacity, size_t frame_queue_capacity);
         ~Context();
 
-        int open(const char *url);
+        int open(const char *url, SampleSpec &spec);
 
         int close();
 
@@ -35,23 +50,19 @@ namespace whfa
         std::mutex *get_format(AVFormatContext **format, int *stream_idx);
         std::mutex *get_codec(AVCodecContext **codec);
 
-        util::DualBlockingQueue<AVPacket *> *get_packet_queue();
-        util::DualBlockingQueue<AVFrame *> *get_frame_queue();
-
-        bool get_sample_spec(AVSampleFormat &format, int &channels, int &rate);
-
-        bool get_frames(size_t count, AVFrame **frames);
+        util::DBPQueue<AVPacket> &get_packet_queue();
+        util::DBPQueue<AVFrame> &get_frame_queue();
 
     private:
-        AVFormatContext *m_fmt_ctxt;
-        AVCodecContext *m_cdc_ctxt;
-        int m_stream_idx;
+        AVFormatContext *_fmt_ctxt;
+        AVCodecContext *_cdc_ctxt;
+        int _stream_idx;
 
-        std::mutex m_fmt_mtx;
-        std::mutex m_cdc_mtx;
+        std::mutex _fmt_mtx;
+        std::mutex _cdc_mtx;
 
-        util::DualBlockingQueue<AVPacket *> m_packets;
-        util::DualBlockingQueue<AVFrame *> m_frames;
+        util::DBPQueue<AVPacket> _packets;
+        util::DBPQueue<AVFrame> _frames;
     };
 
 }

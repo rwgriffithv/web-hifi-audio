@@ -17,4 +17,7 @@ depend: .depend
 	rm -f ./.depend
 	$(CXX) $(CXXFLAGS) -MM $^>>./.depend;
 
+clean:
+	rm -f $(objs)
+
 include .depend

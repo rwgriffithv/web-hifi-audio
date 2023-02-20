@@ -54,15 +54,25 @@ namespace
         return rv;
     }
 
-    void free_packet(AVPacket *&&packet)
+    void free_packet(AVPacket *packet)
     {
         av_packet_free(&packet);
     }
 
-    void free_frame(AVFrame *&&frame)
+    void free_frame(AVFrame *frame)
     {
         av_frame_free(&frame);
     }
+}
+
+/*
+worker public methods
+*/
+
+whfa::Context::Worker::Worker(Context &context)
+    : Threader(),
+      _ctxt(&context)
+{
 }
 
 /*
@@ -89,11 +99,11 @@ public methods
 */
 
 whfa::Context::Context(size_t packet_queue_capacity, size_t frame_queue_capacity)
-    : m_fmt_ctxt(nullptr),
-      m_cdc_ctxt(nullptr),
-      m_stream_idx(-1),
-      m_packets(packet_queue_capacity),
-      m_frames(frame_queue_capacity)
+    : _fmt_ctxt(nullptr),
+      _cdc_ctxt(nullptr),
+      _stream_idx(-1),
+      _packets(packet_queue_capacity),
+      _frames(frame_queue_capacity)
 {
 }
 
@@ -102,55 +112,59 @@ whfa::Context::~Context()
     close();
 }
 
-int whfa::Context::open(const char *url)
+int whfa::Context::open(const char *url, SampleSpec &spec)
 {
     /*
     not using get_format() or get_codec()
     need to lock regardless of whether format or codec are valid
     */
-    std::lock_guard<std::mutex> f_lg(m_fmt_mtx);
-    std::lock_guard<std::mutex> c_lg(m_cdc_mtx);
+    std::lock_guard<std::mutex> f_lg(_fmt_mtx);
+    std::lock_guard<std::mutex> c_lg(_cdc_mtx);
 
-    if (m_cdc_ctxt != nullptr)
+    if (_cdc_ctxt != nullptr)
     {
-        free_codec(&m_cdc_ctxt);
+        free_codec(&_cdc_ctxt);
     }
-    if (m_fmt_ctxt != nullptr)
+    if (_fmt_ctxt != nullptr)
     {
-        free_format(&m_fmt_ctxt);
+        free_format(&_fmt_ctxt);
     }
-    m_stream_idx = -1;
+    _stream_idx = -1;
 
     int rv;
-    rv = !avformat_open_input(&m_fmt_ctxt, url, nullptr, nullptr);
+    rv = !avformat_open_input(&_fmt_ctxt, url, nullptr, nullptr);
     if (rv != 0)
     {
         return rv;
     }
-    rv = avformat_find_stream_info(m_fmt_ctxt, nullptr);
+    rv = avformat_find_stream_info(_fmt_ctxt, nullptr);
     if (rv < 0)
     {
         return rv;
     }
     AVCodec *codec;
-    rv = av_find_best_stream(m_fmt_ctxt, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);
+    rv = av_find_best_stream(_fmt_ctxt, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);
     if (rv < 0)
     {
         return rv;
     }
-    m_stream_idx = rv;
-    AVCodecParameters *params = m_fmt_ctxt->streams[m_stream_idx]->codecpar;
-    m_cdc_ctxt = avcodec_alloc_context3(codec);
-    rv = avcodec_parameters_to_context(m_cdc_ctxt, params);
+    _stream_idx = rv;
+    AVCodecParameters *params = _fmt_ctxt->streams[_stream_idx]->codecpar;
+    _cdc_ctxt = avcodec_alloc_context3(codec);
+    rv = avcodec_parameters_to_context(_cdc_ctxt, params);
     if (rv < 0)
     {
         return rv;
     }
-    rv = avcodec_open2(m_cdc_ctxt, codec, nullptr);
+    rv = avcodec_open2(_cdc_ctxt, codec, nullptr);
     if (rv != 0)
     {
         return rv;
     }
+
+    spec.format = _cdc_ctxt->sample_fmt;
+    spec.rate = _cdc_ctxt->sample_rate;
+    spec.channels = _cdc_ctxt->channels;
     return 0;
 }
 
@@ -169,7 +183,7 @@ int whfa::Context::close()
     }
     if (f_l != nullptr)
     {
-        m_stream_idx = -1;
+        _stream_idx = -1;
         f_l->unlock();
     }
     return rv;
@@ -190,8 +204,8 @@ int whfa::Context::flush()
     }
     if (f_l != nullptr)
     {
-        m_packets.flush(free_packet);
-        m_frames.flush(free_frame);
+        _packets.flush(free_packet);
+        _frames.flush(free_frame);
         f_l->unlock();
     }
     return rv;
@@ -203,18 +217,18 @@ std::mutex *whfa::Context::get_format(AVFormatContext **format, int *stream_idx)
     {
         return nullptr;
     }
-    m_fmt_mtx.lock();
-    *format = m_fmt_ctxt;
-    if (m_fmt_ctxt == nullptr)
+    _fmt_mtx.lock();
+    *format = _fmt_ctxt;
+    if (_fmt_ctxt == nullptr)
     {
-        m_fmt_mtx.unlock();
+        _fmt_mtx.unlock();
         return nullptr;
     }
     if (stream_idx != nullptr)
     {
-        *stream_idx = m_stream_idx;
+        *stream_idx = _stream_idx;
     }
-    return &m_fmt_mtx;
+    return &_fmt_mtx;
 }
 
 std::mutex *whfa::Context::get_codec(AVCodecContext **codec)
@@ -223,37 +237,22 @@ std::mutex *whfa::Context::get_codec(AVCodecContext **codec)
     {
         return nullptr;
     }
-    m_cdc_mtx.lock();
-    *codec = m_cdc_ctxt;
-    if (m_cdc_ctxt == nullptr)
+    _cdc_mtx.lock();
+    *codec = _cdc_ctxt;
+    if (_cdc_ctxt == nullptr)
     {
-        m_cdc_mtx.unlock();
+        _cdc_mtx.unlock();
         return nullptr;
     }
-    return &m_cdc_mtx;
+    return &_cdc_mtx;
 }
 
-util::DualBlockingQueue<AVPacket *> *whfa::Context::get_packet_queue()
+util::DBPQueue<AVPacket> &whfa::Context::get_packet_queue()
 {
-    return &m_packets;
+    return _packets;
 }
 
-util::DualBlockingQueue<AVFrame *> *whfa::Context::get_frame_queue()
+util::DBPQueue<AVFrame> &whfa::Context::get_frame_queue()
 {
-    return &m_frames;
-}
-
-bool whfa::Context::get_sample_spec(AVSampleFormat &format, int &channels, int &rate)
-{
-    AVCodecContext *c_c;
-    std::mutex *c_l = get_codec(&c_c);
-    if (c_l == nullptr)
-    {
-        return false;
-    }
-    format = c_c->sample_fmt;
-    rate = c_c->sample_rate;
-    channels = c_c->channels;
-    c_l->unlock();
-    return true;
+    return _frames;
 }

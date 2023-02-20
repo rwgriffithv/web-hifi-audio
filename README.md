@@ -4,20 +4,22 @@ Linux application to decode audio files and web streams, bypass mixing and resam
 
 near-term todo:
 
-- queue blocking timeouts
+- libav context freeing and flushing (context.cpp)
 - PCM format handling
 - PCM file writing refactor
-- libav networked stream handling
 - ALSA sound card interfacing
+- web API for local file support
+- libav networked stream handling
+- web API for remote file support
 
 needs test:
 
-- multithreaded file reading & decoding
+- multithreaded file reading, decoding, and basic controls
 - PCM file writing
 - EOF handling
 
 dependencies:
 
-- alsa : sound card interfacing
 - libavformat : file and stream parsing
 - libavcodec : file and stream decoding
+- alsa : sound card interfacing

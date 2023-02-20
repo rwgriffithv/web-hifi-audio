@@ -1,15 +1,15 @@
 /*
-abstract base class for a parallel thread working on a libav audio context
+abstract base class for a parallel thread worker
 
 @author Robert Griffith
 */
 #pragma once
 
-#include "context.h"
-
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 
-namespace whfa
+namespace util
 {
 
     class Threader
@@ -19,7 +19,7 @@ namespace whfa
         {
             bool run;
             bool terminate;
-            int averror;
+            int error;
             int64_t curr_pts; /* presentation timestamp */
         };
 
@@ -32,7 +32,7 @@ namespace whfa
         virtual void get_state(State &state);
 
     protected:
-        Threader(Context &context);
+        Threader();
 
         virtual void thread_func();
         virtual void thread_loop_body() = 0;
@@ -43,15 +43,13 @@ namespace whfa
         virtual void set_state_start();
         virtual void set_state_stop();
         virtual void set_state_pause();
-        virtual void set_state_averror(int averror);
+        virtual void set_state_error(int error);
 
-        State m_state;
+        State _state;
 
-        Context *m_ctxt;
-
-        std::mutex m_mtx;
-        std::condition_variable m_cond;
-        std::thread m_thread;
+        std::mutex _mtx;
+        std::condition_variable _cond;
+        std::thread _thread;
     };
 
 }

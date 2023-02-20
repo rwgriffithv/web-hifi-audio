@@ -10,6 +10,7 @@ TODO: building on WSL still has linking errors, makefile was hacked together to 
 
 #include "whfa/decoder.h"
 #include "whfa/reader.h"
+#include "whfa/writer.h"
 
 #include <iostream>
 #include <fstream>
@@ -23,7 +24,7 @@ namespace
 {
     char errbuf[ERRBUFSZ];
 
-    void print_averror(int averror)
+    void print_error(int averror)
     {
         if (av_strerror(averror, errbuf, ERRBUFSZ) != 0)
         {
@@ -43,6 +44,7 @@ int main(int argc, char **argv)
     whfa::Context c(CAP_QUEUE_F, CAP_QUEUE_P);
     whfa::Reader r(c);
     whfa::Decoder d(c);
+    whfa::Writer w(c);
 
     int rv;
 
@@ -52,42 +54,40 @@ int main(int argc, char **argv)
 
     std::cout << "openining " << argv[1] << std::endl;
 
-    rv = c.open(argv[1]);
+    whfa::Context::SampleSpec spec;
+    rv = c.open(argv[1], spec);
     if (rv != 0)
     {
         std::cerr << "failed to open" << std::endl;
-        print_averror(rv);
+        print_error(rv);
         return 1;
     }
 
-    AVSampleFormat format;
-    int channels, rate;
-    if (!c.get_sample_spec(format, channels, rate))
-    {
-        std::cerr << "failed to get sample specification after seemingly successful open" << std::endl;
-    }
-    bool is_planar = av_sample_fmt_is_planar(format) == 1;
-    util::DualBlockingQueue<AVFrame *> *queue = c.get_frame_queue();
+    // TODO: use writer logic w.write_to_file(filename, spec);
 
-    r.start();
+    bool is_planar = av_sample_fmt_is_planar(spec.format) == 1;
+    util::DBPQueue<AVFrame> &queue = c.get_frame_queue();
+    const std::chrono::microseconds timeout(10); // TODO: configure frame pop timeout to sample frequency
+
+    w.start();
     d.start();
+    r.start();
 
     std::ofstream ofs;
     ofs.open(argv[2], std::ios::binary | std::ios::out);
 
-    // TODO: get frames on timeout (need to implement simple method i DualBlockigQueue)
     // TODO: determine EOF by Reader and Decoder states not running and with averror still set to 0
     // TODO: put frame popping and PCM format handling into new whfa class (probably a separate Threader)
     // TODO: use main thread to process seeking, starting, pausing, stopping, and other user input
     AVFrame *frame;
-    whfa::Threader::State state;
+    util::Threader::State state;
     do
     {
         d.get_state(state);
-        if (state.averror != 0)
+        if (state.error != 0)
         {
             std::cerr << "error in Decoder state" << std::endl;
-            print_averror(state.averror);
+            print_error(state.error);
             ofs.close();
             return 1;
         }
@@ -96,7 +96,7 @@ int main(int argc, char **argv)
             std::cout << "EOF reached" << std::endl;
             break;
         }
-        if (!queue->pop(frame))
+        if (!queue.pop(frame, timeout))
         {
             std::cerr << "pop failed, context flushed?" << std::endl;
             break;
@@ -104,20 +104,20 @@ int main(int argc, char **argv)
         // TODO: switch on format, pack frame properly into PCM data using the spec
         // TODO: configurably write to file or write to sound card
         // (for now just writig frame buffers to file)
-        size_t framesz = frame->linesize[0] * channels;
+        size_t framesz = frame->linesize[0] * spec.channels;
         bool alloc;
         uint8_t *buf;
-        if (is_planar && channels > 1)
+        if (is_planar && spec.channels > 1)
         {
             // TODO: interleave according to full sample bitwidth, not just byte by byte
             // TODO: determine if ALSA and the DAC can handle planar formats, and I don't need to do this (maybe make it a config option)
             alloc = true;
             buf = new uint8_t[framesz];
-            for (int c = 0; c < channels; ++c)
+            for (int c = 0; c < spec.channels; ++c)
             {
                 for (int i = 0; i < frame->linesize[0]; ++i)
                 {
-                    buf[i * channels + c] = frame->extended_data[c][i];
+                    buf[i * spec.channels + c] = frame->extended_data[c][i];
                 }
             }
         }

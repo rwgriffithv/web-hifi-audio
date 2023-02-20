@@ -5,12 +5,12 @@ class for parallel decoding of packets from a queue into a frame queue
 */
 #pragma once
 
-#include "threader.h"
+#include "context.h"
 
 namespace whfa
 {
 
-    class Decoder : public Threader
+    class Decoder : public virtual Context::Worker
     {
     public:
         Decoder(Context &context);

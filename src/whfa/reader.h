@@ -5,15 +5,15 @@ class for parallel reading of packets from an audio stream into a queue
 */
 #pragma once
 
-#include "threader.h"
+#include "context.h"
 
 namespace whfa
 {
 
-    class Reader : public Threader
+    class Reader : public Context::Worker
     {
     public:
-        Reader(whfa::Context &context);
+        Reader(Context &context);
 
         /*
         @param pos_pts presentation timestamp in frames using AV_TIME_BASE fps
