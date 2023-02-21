@@ -1,73 +1,54 @@
-/*
-@author Robert Griffith
-*/
-
+/**
+ * @file context.cpp
+ * @author Robert Griffith
+ */
 #include "context.h"
 
 namespace
 {
-    int flush_format(AVFormatContext *format)
+
+    /**
+     * @brief frees format context and sets to nullptr
+     * @param[out] format format context to free and set to nullptr
+     */
+    inline void free_format(AVFormatContext *&format)
     {
-        if (format == nullptr)
+        if (format != nullptr)
         {
-            return 0;
+            avformat_free_context(format);
+            format = nullptr;
         }
-        int rv = 0;
-        // TODO: flush
-        return rv;
     }
 
-    int flush_codec(AVCodecContext *codec)
+    /**
+     * @brief frees codec context and sets to nullptr
+     * @param[out] codec codec context to free and set to nullptr
+     */
+    inline void free_codec(AVCodecContext *&codec)
     {
-        if (codec == nullptr)
+        if (codec != nullptr)
         {
-            return 0;
+            avcodec_free_context(&codec);
         }
-        int rv = 0;
-        // TODO: flush
-        return rv;
     }
 
-    int free_format(AVFormatContext **format)
+    /**
+     * @brief frees format and codec context, sets to nullptrs and invalid stream index
+     * @param[out] format format context to free and set to nullptr
+     * @param[out] codec codec context to free and set to nullptr
+     * @param[out] stream_idx stream index to set to -1
+     */
+    inline void free_context(AVFormatContext *&format, AVCodecContext *&codec, int &stream_idx)
     {
-        if (format == nullptr)
-        {
-            return 0;
-        }
-        flush_format(*format);
-        int rv = 0;
-        // TODO: close and free, always set format to nullptr
-        *format = nullptr;
-        return rv;
-    }
-
-    int free_codec(AVCodecContext **codec)
-    {
-        if (codec == nullptr)
-        {
-            return 0;
-        }
-        flush_codec(*codec);
-        int rv = 0;
-        // TODO: close and free, always set format to nullptr
-        *codec = nullptr;
-        return rv;
-    }
-
-    void free_packet(AVPacket *packet)
-    {
-        av_packet_free(&packet);
-    }
-
-    void free_frame(AVFrame *frame)
-    {
-        av_frame_free(&frame);
+        free_format(format);
+        free_codec(codec);
+        stream_idx = -1;
     }
 }
 
-/*
-worker public methods
-*/
+/**
+ * whfa::Context::Worker public methods
+ */
 
 whfa::Context::Worker::Worker(Context &context)
     : Threader(),
@@ -75,9 +56,9 @@ whfa::Context::Worker::Worker(Context &context)
 {
 }
 
-/*
-static public methods
-*/
+/**
+ * whfa::Context static public methods
+ */
 
 void whfa::Context::register_formats()
 {
@@ -94,16 +75,16 @@ void whfa::Context::disable_networking()
     avformat_network_deinit();
 }
 
-/*
-public methods
-*/
+/**
+ * whfa::Context public methods
+ */
 
 whfa::Context::Context(size_t packet_queue_capacity, size_t frame_queue_capacity)
     : _fmt_ctxt(nullptr),
       _cdc_ctxt(nullptr),
-      _stream_idx(-1),
-      _packets(packet_queue_capacity),
-      _frames(frame_queue_capacity)
+      _stm_idx(-1),
+      _pkt_q(packet_queue_capacity),
+      _frm_q(frame_queue_capacity)
 {
 }
 
@@ -112,133 +93,84 @@ whfa::Context::~Context()
     close();
 }
 
-int whfa::Context::open(const char *url, SampleSpec &spec)
+int whfa::Context::open(const char *url)
 {
-    /*
-    not using get_format() or get_codec()
-    need to lock regardless of whether format or codec are valid
-    */
-    std::lock_guard<std::mutex> f_lg(_fmt_mtx);
-    std::lock_guard<std::mutex> c_lg(_cdc_mtx);
+    std::lock_guard<std::mutex> f_lk(_fmt_mtx);
+    std::lock_guard<std::mutex> c_lk(_cdc_mtx);
 
-    if (_cdc_ctxt != nullptr)
-    {
-        free_codec(&_cdc_ctxt);
-    }
-    if (_fmt_ctxt != nullptr)
-    {
-        free_format(&_fmt_ctxt);
-    }
-    _stream_idx = -1;
+    free_context(_fmt_ctxt, _cdc_ctxt, _stm_idx);
 
     int rv;
-    rv = !avformat_open_input(&_fmt_ctxt, url, nullptr, nullptr);
-    if (rv != 0)
+    if ((rv = !avformat_open_input(&_fmt_ctxt, url, nullptr, nullptr)) != 0)
     {
         return rv;
     }
-    rv = avformat_find_stream_info(_fmt_ctxt, nullptr);
-    if (rv < 0)
+    if ((rv = avformat_find_stream_info(_fmt_ctxt, nullptr)) < 0)
     {
-        return rv;
-    }
-    AVCodec *codec;
-    rv = av_find_best_stream(_fmt_ctxt, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);
-    if (rv < 0)
-    {
-        return rv;
-    }
-    _stream_idx = rv;
-    AVCodecParameters *params = _fmt_ctxt->streams[_stream_idx]->codecpar;
-    _cdc_ctxt = avcodec_alloc_context3(codec);
-    rv = avcodec_parameters_to_context(_cdc_ctxt, params);
-    if (rv < 0)
-    {
-        return rv;
-    }
-    rv = avcodec_open2(_cdc_ctxt, codec, nullptr);
-    if (rv != 0)
-    {
+        free_format(_fmt_ctxt);
         return rv;
     }
 
-    spec.format = _cdc_ctxt->sample_fmt;
-    spec.rate = _cdc_ctxt->sample_rate;
-    spec.channels = _cdc_ctxt->channels;
+    AVCodec *codec;
+    if ((rv = av_find_best_stream(_fmt_ctxt, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0)) < 0)
+    {
+        free_format(_fmt_ctxt);
+        return rv;
+    }
+    _stm_idx = rv;
+
+    AVCodecParameters *params = _fmt_ctxt->streams[_stm_idx]->codecpar;
+    _cdc_ctxt = avcodec_alloc_context3(codec);
+    if ((rv = avcodec_parameters_to_context(_cdc_ctxt, params)) < 0)
+    {
+        free_context(_fmt_ctxt, _cdc_ctxt, _stm_idx);
+        return rv;
+    }
+    if ((rv = avcodec_open2(_cdc_ctxt, codec, nullptr)) != 0)
+    {
+        free_context(_fmt_ctxt, _cdc_ctxt, _stm_idx);
+        return rv;
+    }
     return 0;
 }
 
-int whfa::Context::close()
+void whfa::Context::close()
 {
-    AVFormatContext *f_c;
-    AVCodecContext *c_c;
-    std::mutex *f_l = get_format(&f_c, nullptr);
-    std::mutex *c_l = get_codec(&c_c);
-    int rv = 0;
-    rv |= free_codec(&c_c);
-    rv |= free_format(&f_c);
-    if (c_l != nullptr)
+    std::lock_guard<std::mutex> f_lk(_fmt_mtx);
+    std::lock_guard<std::mutex> c_lk(_cdc_mtx);
+    free_context(_fmt_ctxt, _cdc_ctxt, _stm_idx);
+}
+
+bool whfa::Context::get_sample_spec(SampleSpec &spec)
+{
+    std::lock_guard<std::mutex> c_lk(_cdc_mtx);
+    bool rv = _cdc_ctxt != nullptr;
+    if (rv)
     {
-        c_l->unlock();
-    }
-    if (f_l != nullptr)
-    {
-        _stream_idx = -1;
-        f_l->unlock();
+        spec.format = _cdc_ctxt->sample_fmt;
+        spec.rate = _cdc_ctxt->sample_rate;
+        spec.channels = _cdc_ctxt->channels;
     }
     return rv;
 }
 
-int whfa::Context::flush()
+std::mutex *whfa::Context::get_format(AVFormatContext *&format, int &stream_idx)
 {
-    AVFormatContext *f_c;
-    AVCodecContext *c_c;
-    std::mutex *f_l = get_format(&f_c, nullptr);
-    std::mutex *c_l = get_codec(&c_c);
-    int rv = 0;
-    rv |= flush_codec(c_c);
-    rv |= flush_format(f_c);
-    if (c_l != nullptr)
-    {
-        c_l->unlock();
-    }
-    if (f_l != nullptr)
-    {
-        _packets.flush(free_packet);
-        _frames.flush(free_frame);
-        f_l->unlock();
-    }
-    return rv;
-}
-
-std::mutex *whfa::Context::get_format(AVFormatContext **format, int *stream_idx)
-{
-    if (format == nullptr)
-    {
-        return nullptr;
-    }
     _fmt_mtx.lock();
-    *format = _fmt_ctxt;
+    format = _fmt_ctxt;
+    stream_idx = _stm_idx;
     if (_fmt_ctxt == nullptr)
     {
         _fmt_mtx.unlock();
         return nullptr;
     }
-    if (stream_idx != nullptr)
-    {
-        *stream_idx = _stream_idx;
-    }
     return &_fmt_mtx;
 }
 
-std::mutex *whfa::Context::get_codec(AVCodecContext **codec)
+std::mutex *whfa::Context::get_codec(AVCodecContext *&codec)
 {
-    if (codec == nullptr)
-    {
-        return nullptr;
-    }
     _cdc_mtx.lock();
-    *codec = _cdc_ctxt;
+    codec = _cdc_ctxt;
     if (_cdc_ctxt == nullptr)
     {
         _cdc_mtx.unlock();
@@ -249,10 +181,10 @@ std::mutex *whfa::Context::get_codec(AVCodecContext **codec)
 
 util::DBPQueue<AVPacket> &whfa::Context::get_packet_queue()
 {
-    return _packets;
+    return _pkt_q;
 }
 
 util::DBPQueue<AVFrame> &whfa::Context::get_frame_queue()
 {
-    return _frames;
+    return _frm_q;
 }

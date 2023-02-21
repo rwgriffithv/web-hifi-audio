@@ -1,27 +1,34 @@
-/*
-@author Robert Griffith
-*/
-
+/**
+ * @file writer.cpp
+ * @author Robert Griffith
+ */
 #include "writer.h"
 
+/**
+ * whfa::Writer public methods
+ */
+
 whfa::Writer::Writer(whfa::Context &context)
-    : Worker(context)
+    : Worker(context),
+      _mode(OutputType::FILE)
 {
 }
 
-bool whfa::Writer::write_to_file(const char *filename, const Context::SampleSpec &spec)
+bool whfa::Writer::open(const char *name, OutputType mode)
 {
-    // TODO: take configuration from ../main.cpp
+    _mode = mode;
     return false;
 }
 
-bool whfa::Writer::write_to_device(const char *devname, const Context::SampleSpec &spec)
+bool whfa::Writer::close()
 {
-    // TODO: take configuration bits from ../main.cpp and add ALSA hw configuration
     return false;
 }
 
-void whfa::Writer::thread_loop_body()
+/**
+ * whfa::Writer protected methods
+ */
+
+void whfa::Writer::execute_loop_body()
 {
-    // TODO: take file I/O work from ../main.cpp and add ALSA work
 }

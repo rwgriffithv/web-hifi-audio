@@ -1,9 +1,7 @@
-/*
-threadsafe class for storing and maniuplating underlying libav audio context objects
-also hold shared threadsafe queues for processing packets and frames
-
-@author Robert Griffith
-*/
+/**
+ * @file context.h
+ * @author Robert Griffith
+ */
 #pragma once
 
 #include "../util/dbpqueue.h"
@@ -17,52 +15,160 @@ extern "C"
 namespace whfa
 {
 
+    /**
+     * @class whfa::Context
+     * @brief threadsafe class for synchronized shared context
+     *
+     * provides access to underlying libav audio context objects and packet and frame queues
+     */
     class Context
     {
     public:
+        /**
+         * @class whfa::Context::Worker
+         * @brief simple base Threader class for working with Context
+         */
         class Worker : public util::Threader
         {
+        public:
+            /// @brief error code for invalid codec
+            static constexpr int CODECINVAL = 0x10;
+            /// @brief error code for invalid format
+            static constexpr int FORMATINVAL = 0x20;
+
         protected:
+            /**
+             * @brief hidden constructor for derived classes to use
+             * @param context threadsafe audio context to access
+             */
             Worker(Context &context);
+
+            /// @brief the libav audio context object
             Context *_ctxt;
         };
 
+        /**
+         * @struct whfa::Context::SampleSpec
+         * @brief struct for holding sample information
+         */
         struct SampleSpec
         {
+            /// @brief sample format (includes bit-depth & planar/interleaved)
             AVSampleFormat format;
+            /// @brief number of channels
             int channels;
+            /// @brief sample frequency
             int rate;
         };
 
+        /**
+         * @brief  register all available codec formats with libav
+         */
         static void register_formats();
+        /**
+         * @brief  enable support for opening networked streams with libav
+         */
         static void enable_networking();
+        /**
+         * @brief  disable support for opening networked streams with libav
+         */
         static void disable_networking();
 
+        /**
+         * @brief constructor
+
+         * @param packet_queue_capacity capacity of underlying packet DBPQueue
+         * @param frame_queue_capacity capacity of underlying frame DBPQueue
+         */
         Context(size_t packet_queue_capacity, size_t frame_queue_capacity);
-        ~Context();
+        /**
+         * @brief destructor
+         */
+        virtual ~Context();
 
-        int open(const char *url, SampleSpec &spec);
+        /**
+         * @brief open libav stream and sets format and codec context if valid audio source
+         *
+         * format and codec members are attempted to be freed upon error
+         *
+         * @param url libav stream string to source
+         * @return error int, 0 on success
+         */
+        int open(const char *url);
 
-        int close();
+        /**
+         * @brief close and free format and codec contexts
+         */
+        void close();
 
-        int flush();
+        /**
+         * @brief get sample specification for currently opened codec
+         *
+         * @param[out] spec sample specification of stream
+         * @return false if codec is not opened
+         */
+        bool get_sample_spec(SampleSpec &spec);
 
-        std::mutex *get_format(AVFormatContext **format, int *stream_idx);
-        std::mutex *get_codec(AVCodecContext **codec);
+        /**
+         * @brief get exclusive access to format context and stream index
+         *
+         * lock released if format context is invalid
+         * still sets format and stream_idx to copies of internal values
+         *
+         * @param[out] format format context
+         * @param[out] stream_idx index of stream opened
+         * @return pointer to locked mutex (must release), nullptr if format is invalid
+         */
+        std::mutex *get_format(AVFormatContext *&format, int &stream_idx);
 
+        /**
+         * @brief get exclusive access to codec context
+         *
+         * lock release if codec context is invalid
+         * still sets codec to copy of internal value
+         *
+         * @param[out] codec codec context
+         * @return pointer to locked mutex, nullptr if format is invalid
+         */
+        std::mutex *get_codec(AVCodecContext *&codec);
+
+        /**
+         * @brief get reference to threadsafe packet queue
+         *
+         * popped packets are the responsibility of the caller
+         * packets must be freed using av_packet_free() after popping or when flushing
+         *
+         * @return packet queue
+         */
         util::DBPQueue<AVPacket> &get_packet_queue();
+
+        /**
+         * @brief get reference to threadsafe frame queue
+
+         * popped frames are the responsibility of the caller
+         * frames must be freed using av_frame_free() after popping or when flushing
+         *
+         * @return frame queue
+         */
         util::DBPQueue<AVFrame> &get_frame_queue();
 
-    private:
+    protected:
+        /// @brief libav format context (nullptr if invalid)
         AVFormatContext *_fmt_ctxt;
+        /// @brief libav codec context (nullptr if invalid)
         AVCodecContext *_cdc_ctxt;
-        int _stream_idx;
+        /// @brief stream index to audio stream in format context (-1 if invalid)
+        int _stm_idx;
 
+        /// @brief mutex synchronizing access to format context and stream index
         std::mutex _fmt_mtx;
+        /// @brief mutex synchronizing access to codec context
         std::mutex _cdc_mtx;
 
-        util::DBPQueue<AVPacket> _packets;
-        util::DBPQueue<AVFrame> _frames;
+        /// @brief threadsafe queue of pointers to libav packets on the heap
+        util::DBPQueue<AVPacket> _pkt_q;
+        /// @brief threadsafe queue of pointers to libav frames on the heap
+        util::DBPQueue<AVFrame> _frm_q;
     };
 
 }

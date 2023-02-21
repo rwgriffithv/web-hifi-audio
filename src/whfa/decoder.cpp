@@ -1,30 +1,32 @@
-/*
-@author Robert Griffith
-*/
+/**
+ * @file decoder.cpp
+ * @author Robert Griffith
+ */
 
 #include "decoder.h"
 
-/*
-public methods
-*/
+/**
+ * whfa::Decoder public methods
+ */
 
 whfa::Decoder::Decoder(Context &context)
     : Worker(context)
 {
 }
 
-/*
-protected methods
-*/
+/**
+ * whfa::Decoder protected methods
+ */
 
-void whfa::Decoder::thread_loop_body()
+void whfa::Decoder::execute_loop_body()
 {
-    std::mutex *cdc_lock;
+    std::mutex *cdc_mtx;
     AVCodecContext *cdc_ctxt;
-    cdc_lock = _ctxt->get_codec(&cdc_ctxt);
-    if (cdc_lock == nullptr)
+    cdc_mtx = _ctxt->get_codec(cdc_ctxt);
+    if (cdc_mtx == nullptr)
     {
         set_state_stop();
+        set_state_error(Worker::CODECINVAL);
         return;
     }
 
@@ -33,11 +35,12 @@ void whfa::Decoder::thread_loop_body()
     AVPacket *packet;
     if (!pkt_queue.pop(packet))
     {
+        // due to flush, not an error state
+        cdc_mtx->unlock();
         return;
     }
 
-    int rv;
-    rv = avcodec_send_packet(cdc_ctxt, packet);
+    int rv = avcodec_send_packet(cdc_ctxt, packet);
     if (rv == 0 || rv == AVERROR(EAGAIN))
     {
         do
@@ -48,12 +51,13 @@ void whfa::Decoder::thread_loop_body()
             {
                 if (fr_queue.push(frame))
                 {
-                    _state.curr_pts = frame->pts;
+                    _state.timestamp = frame->pts;
                     frame = nullptr;
                 }
             }
             if (frame != nullptr)
             {
+                // flush, error, or no more frames in packet
                 av_frame_free(&frame);
             }
         } while (rv == 0);
@@ -68,5 +72,5 @@ void whfa::Decoder::thread_loop_body()
         set_state_pause();
         set_state_error(rv);
     }
-    cdc_lock->unlock();
+    cdc_mtx->unlock();
 }

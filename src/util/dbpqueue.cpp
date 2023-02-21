@@ -1,12 +1,13 @@
-/*
-@author Robert Griffith
-*/
+/**
+ * @file dbpqueue.cpp
+ * @author Robert Griffith
+ */
 
 #include "dbpqueue.h"
 
-/*
-public methods
-*/
+/**
+ * util::DBPQueue<T> public methods
+ */
 
 template <typename T>
 util::DBPQueue<T>::DBPQueue(size_t capacity)
@@ -234,9 +235,9 @@ const size_t util::DBPQueue<T>::get_size()
     return _pop_buf.sz + _push_buf.sz;
 }
 
-/*
-protected methods
-*/
+/**
+ * util::DBPQueue<T> protected methods
+ */
 
 template <typename T>
 bool util::DBPQueue<T>::fill_pop_buffer()

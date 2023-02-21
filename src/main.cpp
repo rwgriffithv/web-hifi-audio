@@ -54,12 +54,17 @@ int main(int argc, char **argv)
 
     std::cout << "openining " << argv[1] << std::endl;
 
-    whfa::Context::SampleSpec spec;
-    rv = c.open(argv[1], spec);
+    rv = c.open(argv[1]);
     if (rv != 0)
     {
         std::cerr << "failed to open" << std::endl;
         print_error(rv);
+        return 1;
+    }
+    
+    whfa::Context::SampleSpec spec;
+    if (!c.get_sample_spec(spec)) {
+        std::cerr << "failed to get sample spec after open" << std::endl;
         return 1;
     }
 

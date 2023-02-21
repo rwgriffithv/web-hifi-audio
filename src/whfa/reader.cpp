@@ -1,12 +1,26 @@
-/*
-@author Robert Griffith
-*/
-
+/**
+ * @file reader.cpp
+ * @author Robert Griffith
+ */
 #include "reader.h"
 
-/*
-public methods
-*/
+namespace {
+
+    void free_packet(AVPacket *packet)
+    {
+        av_packet_free(&packet);
+    }
+
+    void free_frame(AVFrame *frame)
+    {
+        av_frame_free(&frame);
+    }
+
+}
+
+/**
+ * whfa::Reader public methods
+ */
 
 whfa::Reader::Reader(Context &context)
     : Worker(context)
@@ -16,47 +30,116 @@ whfa::Reader::Reader(Context &context)
 bool whfa::Reader::seek(int64_t pos_pts)
 {
     std::lock_guard<std::mutex> lock(_mtx);
-    std::mutex *fmt_lock;
-    AVFormatContext *fmt_ctxt;
-    int stream_idx;
-    fmt_lock = _ctxt->get_format(&fmt_ctxt, &stream_idx);
-    if (fmt_lock == nullptr)
-    {
-        return false;
-    }
+    int err = 0;
 
-    int64_t conv_pts = av_rescale_q(pos_pts, AV_TIME_BASE_Q,
-                                    fmt_ctxt->streams[stream_idx]->time_base);
-    int flags = (conv_pts < _state.curr_pts) ? AVSEEK_FLAG_BACKWARD : 0;
-    int rv = av_seek_frame(fmt_ctxt, stream_idx, conv_pts, flags);
-    if (rv >= 0)
+    AVFormatContext *fmt_ctxt;
+    int s_idx;
+    std::mutex *fmt_mtx = _ctxt->get_format(fmt_ctxt, s_idx);
+    if (fmt_mtx == nullptr)
     {
-        // flush contexts and queues
-        _ctxt->flush();
+        err = Worker::FORMATINVAL;
     }
-    fmt_lock->unlock();
-    if (rv < 0)
+    else
     {
-        set_state_error(rv);
+        const int64_t conv_pts = av_rescale_q(pos_pts, AV_TIME_BASE_Q,
+                                              fmt_ctxt->streams[s_idx]->time_base);
+        const int flags = (conv_pts < _state.timestamp) ? AVSEEK_FLAG_BACKWARD : 0;
+        const int rv = av_seek_frame(fmt_ctxt, s_idx, conv_pts, flags);
+        _ctxt->get_packet_queue().flush(free_packet);
+        fmt_mtx->unlock();
+
+        if (rv < 0)
+        {
+            err = rv;
+        }
+        else
+        {
+            AVCodecContext *cdc_ctxt;
+            std::mutex *cdc_mtx = _ctxt->get_codec(cdc_ctxt);
+            if (cdc_mtx == nullptr)
+            {
+                err = Worker::CODECINVAL;
+            }
+            else
+            {
+                avcodec_flush_buffers(cdc_ctxt);
+                _ctxt->get_frame_queue().flush(free_frame);
+                cdc_mtx->unlock();
+            }
+        }
+    }
+    if (err != 0)
+    {
         set_state_pause();
+        set_state_error(err);
         return false;
     }
     return true;
 }
 
-/*
-protected methods
-*/
-
-void whfa::Reader::thread_loop_body()
+bool whfa::Reader::seek(double pos_pct)
 {
-    std::mutex *fmt_lock;
+    std::lock_guard<std::mutex> lock(_mtx);
+    int err = 0;
+
     AVFormatContext *fmt_ctxt;
-    int stream_idx;
-    fmt_lock = _ctxt->get_format(&fmt_ctxt, &stream_idx);
-    if (fmt_lock == nullptr)
+    int s_idx;
+    std::mutex *fmt_mtx = _ctxt->get_format(fmt_ctxt, s_idx);
+    if (fmt_mtx == nullptr)
+    {
+        err = Worker::FORMATINVAL;
+    }
+    else
+    {
+        const int64_t conv_pts = static_cast<int64_t>(pos_pct * fmt_ctxt->streams[s_idx]->duration);
+        const int flags = (conv_pts < _state.timestamp) ? AVSEEK_FLAG_BACKWARD : 0;
+        const int rv = av_seek_frame(fmt_ctxt, s_idx, conv_pts, flags);
+        _ctxt->get_packet_queue().flush();
+        fmt_mtx->unlock();
+
+        if (rv < 0)
+        {
+            err = rv;
+        }
+        else
+        {
+            AVCodecContext *cdc_ctxt;
+            std::mutex *cdc_mtx = _ctxt->get_codec(cdc_ctxt);
+            if (cdc_mtx == nullptr)
+            {
+                err = Worker::CODECINVAL;
+            }
+            else
+            {
+                avcodec_flush_buffers(cdc_ctxt);
+                _ctxt->get_frame_queue().flush();
+                cdc_mtx->unlock();
+            }
+        }
+    }
+    if (err != 0)
+    {
+        set_state_pause();
+        set_state_error(err);
+        return false;
+    }
+    return true;
+}
+
+/**
+ * whfa::Reader protected methods
+ */
+
+void whfa::Reader::execute_loop_body()
+{
+    std::mutex *fmt_mtx;
+    AVFormatContext *fmt_ctxt;
+    int s_idx;
+    fmt_mtx = _ctxt->get_format(fmt_ctxt, s_idx);
+    if (fmt_mtx == nullptr)
     {
         set_state_stop();
+        set_state_error(Worker::FORMATINVAL);
         return;
     }
 
@@ -65,23 +148,20 @@ void whfa::Reader::thread_loop_body()
     int rv;
     while ((rv = av_read_frame(fmt_ctxt, packet)) == 0)
     {
-        if (packet->stream_index == stream_idx)
+        if (packet->stream_index == s_idx)
         {
             if (queue.push(packet))
             {
-                _state.curr_pts = packet->pts + packet->duration;
+                _state.timestamp = packet->pts + packet->duration;
                 packet = nullptr;
             }
             break;
         }
     }
-    fmt_lock->unlock();
+    fmt_mtx->unlock();
     if (packet != nullptr)
     {
-        /*
-        push failed due to queue flush (likely a seek)
-        do not stop reading, cleanup packet
-        */
+        // flush or no desired packet found, not an error state
         av_packet_free(&packet);
     }
     if (rv == AVERROR_EOF)

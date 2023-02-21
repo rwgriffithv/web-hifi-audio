@@ -11,6 +11,7 @@ near-term todo:
 - web API for local file support
 - libav networked stream handling
 - web API for remote file support
+- better build scripts so subdirectories become libraries
 
 needs test:
 

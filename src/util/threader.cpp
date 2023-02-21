@@ -1,8 +1,12 @@
+/**
+ * @file threader.cpp
+ * @author Robert Griffith
+ */
 #include "threader.h"
 
-/*
-public methods
-*/
+/**
+ * Threader public methods
+ */
 
 util::Threader::~Threader()
 {
@@ -40,20 +44,20 @@ void util::Threader::get_state(State &state)
     state = _state;
 }
 
-/*
-protected methods
-*/
+/**
+ * Threader protected methods
+ */
 
 util::Threader::Threader()
     : _state({.run = false,
-               .terminate = false,
-               .error = 0,
-               .curr_pts = 0}),
-      _thread(&Threader::thread_func, this)
+              .terminate = false,
+              .error = 0,
+              .timestamp = 0}),
+      _thread(&Threader::execute_loop, this)
 {
 }
 
-void util::Threader::thread_func()
+void util::Threader::execute_loop()
 {
     do
     {
@@ -67,7 +71,7 @@ void util::Threader::thread_func()
             break;
         }
 
-        thread_loop_body();
+        execute_loop_body();
 
         lock.unlock();
     } while (true);
@@ -77,13 +81,13 @@ void util::Threader::set_state_start()
 {
     _state.run = true;
     _state.error = 0;
-    _state.curr_pts = 0;
+    _state.timestamp = 0;
 }
 
 void util::Threader::set_state_stop()
 {
     _state.run = false;
-    _state.curr_pts = 0;
+    _state.timestamp = 0;
 }
 
 void util::Threader::set_state_pause()
