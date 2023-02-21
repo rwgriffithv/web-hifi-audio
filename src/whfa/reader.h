@@ -1,9 +1,6 @@
 /**
  * @file reader.h
  * @author Robert Griffith
-
-
-@author Robert Griffith
 */
 #pragma once
 

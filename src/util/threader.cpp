@@ -5,7 +5,7 @@
 #include "threader.h"
 
 /**
- * Threader public methods
+ * util::Threader public methods
  */
 
 util::Threader::~Threader()
@@ -45,7 +45,7 @@ void util::Threader::get_state(State &state)
 }
 
 /**
- * Threader protected methods
+ * util::Threader protected methods
  */
 
 util::Threader::Threader()

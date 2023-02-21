@@ -1,13 +1,11 @@
-/*
-test main method to read an encoded file and write a decoded file
-many TODOs
-eventually will be replaced by ALSA functionality, may come back later as a file-writing option
-
-TODO: building on WSL still has linking errors, makefile was hacked together to just find compile-time errors better
-
-@author Robert Griffith
-*/
-
+/**
+ * @file main.cpp
+ * @author Robert Griffith
+ *
+ * @todo: move into whfa::Writer
+ * @todo: implement cli and test methods
+ * @todo: building on WSL still has linking errors, makefile was hacked together to just find compile-time errors better
+ */
 #include "whfa/decoder.h"
 #include "whfa/reader.h"
 #include "whfa/writer.h"
@@ -61,9 +59,10 @@ int main(int argc, char **argv)
         print_error(rv);
         return 1;
     }
-    
+
     whfa::Context::SampleSpec spec;
-    if (!c.get_sample_spec(spec)) {
+    if (!c.get_sample_spec(spec))
+    {
         std::cerr << "failed to get sample spec after open" << std::endl;
         return 1;
     }

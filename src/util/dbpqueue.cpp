@@ -2,7 +2,6 @@
  * @file dbpqueue.cpp
  * @author Robert Griffith
  */
-
 #include "dbpqueue.h"
 
 /**

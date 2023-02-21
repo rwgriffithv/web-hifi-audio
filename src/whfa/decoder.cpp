@@ -2,7 +2,6 @@
  * @file decoder.cpp
  * @author Robert Griffith
  */
-
 #include "decoder.h"
 
 /**

@@ -4,7 +4,6 @@ Linux application to decode audio files and web streams, bypass mixing and resam
 
 near-term todo:
 
-- libav context freeing and flushing (context.cpp)
 - PCM format handling
 - PCM file writing refactor
 - ALSA sound card interfacing
