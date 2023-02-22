@@ -6,19 +6,22 @@
 
 #include "context.h"
 
+#include <alsa/asoundlib.h>
+
+#include <fstream>
+
 namespace whfa
 {
 
     /**
      * @class whfa::Writer
-     * @brief class for parallel writing of audio frames in PCM
+     * @brief class for parallel writing of PCM audio frames
      *
      * context worker class to abstract forwarding libav frames to files and devices
-     * will write to either one file or one device (restricted for performance reasons)
+     * will write to only one sink at a time (potentially changed later)
      * a context should only have one writer, as it consumes frames destructively from the queue
      *
      * @todo: create member objects required to facilitate open() and close()
-     * @todo: write as raw PCM, wav, or flac to file (use OutputType enum)
      * @todo: write raw PCM to sound card using ALSA
      * @todo: determine queue pop timeouts from SampleSpec rate
      * @todo: try doing multiple OutputTypes at once (could make it a bitfield to OR together)
@@ -32,10 +35,12 @@ namespace whfa
          */
         enum OutputType
         {
-            /// @brief PCM file output
-            FILE,
             /// @brief sound card device output
-            DEVICE
+            DEVICE,
+            /// @brief PCM file output
+            FILE_RAW,
+            /// @brief PCM WAV file output
+            FILE_WAV
         };
 
         /**
@@ -56,7 +61,7 @@ namespace whfa
         bool open(const char *name, OutputType mode);
 
         /**
-         * @brief close open output destination
+         * @brief close open output destination(s)
          */
         bool close();
 
@@ -68,8 +73,19 @@ namespace whfa
          */
         void execute_loop_body() override;
 
+        /**
+         * @brief not threadsafe close open output destination(s)
+         */
+        bool close_unsafe();
+
         /// @brief mode of output / writing
         OutputType _mode;
+        /// @brief alsa PCM device handle
+        snd_pcm_t *_dev;
+        /// @brief output file stream, closed if invalid
+        std::ofstream _ofs;
+        /// @brief size of written file in bytes
+        size_t _fsize;
     };
 
 }

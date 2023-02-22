@@ -13,20 +13,24 @@
 #include <iostream>
 #include <fstream>
 
-constexpr size_t CAP_QUEUE_P = 500;
-constexpr size_t CAP_QUEUE_F = 500;
-
-constexpr size_t ERRBUFSZ = 256;
-
 namespace
 {
-    char errbuf[ERRBUFSZ];
+    constexpr size_t __CAP_QUEUE_P = 500;
+    constexpr size_t __CAP_QUEUE_F = 500;
+
+    constexpr size_t __ERRBUFSZ = 256;
+
+    constexpr const char *__OUTDEV = "default";
+    constexpr const char *__OUTWAV = "out.wav";
+    constexpr const char *__OUTRAW = "out.raw";
+
+    char errbuf[__ERRBUFSZ];
 
     void print_error(int averror)
     {
-        if (av_strerror(averror, errbuf, ERRBUFSZ) != 0)
+        if (av_strerror(averror, errbuf, __ERRBUFSZ) != 0)
         {
-            snprintf(errbuf, ERRBUFSZ, "no error description found");
+            snprintf(errbuf, __ERRBUFSZ, "no error description found");
         }
         std::cerr << "AVERROR (" << averror << ") : " << errbuf << std::endl;
     }
@@ -39,10 +43,11 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    whfa::Context c(CAP_QUEUE_F, CAP_QUEUE_P);
+    whfa::Context c(__CAP_QUEUE_F, __CAP_QUEUE_P);
     whfa::Reader r(c);
     whfa::Decoder d(c);
     whfa::Writer w(c);
+    util::Threader::State state;
 
     int rv;
 
@@ -55,10 +60,20 @@ int main(int argc, char **argv)
     rv = c.open(argv[1]);
     if (rv != 0)
     {
-        std::cerr << "failed to open" << std::endl;
+        std::cerr << "failed to open input" << std::endl;
         print_error(rv);
         return 1;
     }
+
+    if (!w.open(__OUTWAV, whfa::Writer::OutputType::FILE_RAW))
+    {
+        std::cerr << "failed to open output" << std::endl;
+        w.get_state(state);
+        print_error(state.error);
+        return 1;
+    }
+
+    // TODO: use writer logic w.write_to_file(filename, spec);
 
     whfa::Context::SampleSpec spec;
     if (!c.get_sample_spec(spec))
@@ -66,8 +81,6 @@ int main(int argc, char **argv)
         std::cerr << "failed to get sample spec after open" << std::endl;
         return 1;
     }
-
-    // TODO: use writer logic w.write_to_file(filename, spec);
 
     bool is_planar = av_sample_fmt_is_planar(spec.format) == 1;
     util::DBPQueue<AVFrame> &queue = c.get_frame_queue();
@@ -84,7 +97,6 @@ int main(int argc, char **argv)
     // TODO: put frame popping and PCM format handling into new whfa class (probably a separate Threader)
     // TODO: use main thread to process seeking, starting, pausing, stopping, and other user input
     AVFrame *frame;
-    util::Threader::State state;
     do
     {
         d.get_state(state);
