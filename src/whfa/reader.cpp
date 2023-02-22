@@ -4,13 +4,24 @@
  */
 #include "reader.h"
 
-namespace {
+namespace
+{
 
+    /**
+     * @brief used when flushing context packet queue
+     *
+     * @param packet libav packet to free
+     */
     void free_packet(AVPacket *packet)
     {
         av_packet_free(&packet);
     }
 
+    /**
+     * @brief used when flushing context frame queue
+     *
+     * @param frame libav frame to free
+     */
     void free_frame(AVFrame *frame)
     {
         av_frame_free(&frame);
@@ -29,8 +40,9 @@ whfa::Reader::Reader(Context &context)
 
 bool whfa::Reader::seek(int64_t pos_pts)
 {
-    std::lock_guard<std::mutex> lock(_mtx);
+    std::lock_guard<std::mutex> lk(_mtx);
     int err = 0;
+    bool stop = false;
 
     AVFormatContext *fmt_ctxt;
     int s_idx;
@@ -38,6 +50,7 @@ bool whfa::Reader::seek(int64_t pos_pts)
     if (fmt_mtx == nullptr)
     {
         err = Worker::FORMATINVAL;
+        stop = true;
     }
     else
     {
@@ -59,6 +72,7 @@ bool whfa::Reader::seek(int64_t pos_pts)
             if (cdc_mtx == nullptr)
             {
                 err = Worker::CODECINVAL;
+                stop = true;
             }
             else
             {
@@ -70,7 +84,14 @@ bool whfa::Reader::seek(int64_t pos_pts)
     }
     if (err != 0)
     {
-        set_state_pause();
+        if (stop)
+        {
+            set_state_stop();
+        }
+        else
+        {
+            set_state_pause();
+        }
         set_state_error(err);
         return false;
     }
@@ -79,8 +100,9 @@ bool whfa::Reader::seek(int64_t pos_pts)
 
 bool whfa::Reader::seek(double pos_pct)
 {
-    std::lock_guard<std::mutex> lock(_mtx);
+    std::lock_guard<std::mutex> lk(_mtx);
     int err = 0;
+    bool stop = false;
 
     AVFormatContext *fmt_ctxt;
     int s_idx;
@@ -88,6 +110,7 @@ bool whfa::Reader::seek(double pos_pct)
     if (fmt_mtx == nullptr)
     {
         err = Worker::FORMATINVAL;
+        stop = true;
     }
     else
     {
@@ -108,6 +131,7 @@ bool whfa::Reader::seek(double pos_pct)
             if (cdc_mtx == nullptr)
             {
                 err = Worker::CODECINVAL;
+                stop = true;
             }
             else
             {
@@ -119,7 +143,14 @@ bool whfa::Reader::seek(double pos_pct)
     }
     if (err != 0)
     {
-        set_state_pause();
+        if (stop)
+        {
+            set_state_stop();
+        }
+        else
+        {
+            set_state_pause();
+        }
         set_state_error(err);
         return false;
     }
