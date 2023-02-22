@@ -75,10 +75,10 @@ int main(int argc, char **argv)
 
     // TODO: use writer logic w.write_to_file(filename, spec);
 
-    whfa::Context::SampleSpec spec;
-    if (!c.get_sample_spec(spec))
+    whfa::Context::StreamSpec spec;
+    if (!c.get_stream_spec(spec))
     {
-        std::cerr << "failed to get sample spec after open" << std::endl;
+        std::cerr << "failed to get stream spec after open" << std::endl;
         return 1;
     }
 

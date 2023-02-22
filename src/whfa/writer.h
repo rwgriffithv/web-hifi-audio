@@ -84,8 +84,8 @@ namespace whfa
         snd_pcm_t *_dev;
         /// @brief output file stream, closed if invalid
         std::ofstream _ofs;
-        /// @brief size of written file in bytes
-        size_t _fsize;
+        /// @brief context stream specification
+        Context::StreamSpec _spec;
     };
 
 }

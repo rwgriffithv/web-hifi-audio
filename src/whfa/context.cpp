@@ -141,16 +141,19 @@ void whfa::Context::close()
     free_context(_fmt_ctxt, _cdc_ctxt, _stm_idx);
 }
 
-bool whfa::Context::get_sample_spec(SampleSpec &spec)
+bool whfa::Context::get_stream_spec(StreamSpec &spec)
 {
+    std::lock_guard<std::mutex> f_lk(_fmt_mtx);
     std::lock_guard<std::mutex> c_lk(_cdc_mtx);
-    bool rv = _cdc_ctxt != nullptr;
+    bool rv = _fmt_ctxt != nullptr && _cdc_ctxt != nullptr;
     if (rv)
     {
         spec.format = _cdc_ctxt->sample_fmt;
+        spec.timebase = _fmt_ctxt->streams[_stm_idx]->time_base;
+        spec.duration = _fmt_ctxt->streams[_stm_idx]->duration;
         spec.bitdepth = _cdc_ctxt->bits_per_raw_sample;
-        spec.rate = _cdc_ctxt->sample_rate;
         spec.channels = _cdc_ctxt->channels;
+        spec.rate = _cdc_ctxt->sample_rate;
     }
     return rv;
 }

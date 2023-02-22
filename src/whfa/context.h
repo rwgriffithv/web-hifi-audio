@@ -17,9 +17,10 @@ namespace whfa
 
     /**
      * @class whfa::Context
-     * @brief threadsafe class for synchronized shared context
+     * @brief threadsafe class for synchronized shared context of one audio stream
      *
-     * provides access to underlying libav audio context objects and packet and frame queues
+     * provides synchronized access to libav audio context objects and packet and frame queues
+     * designed for demuxing one audio stream and facilitating parallel operation
      */
     class Context
     {
@@ -48,16 +49,20 @@ namespace whfa
         };
 
         /**
-         * @struct whfa::Context::SampleSpec
-         * @brief struct for holding sample information
+         * @struct whfa::Context::StreamSpec
+         * @brief struct for holding stream information
          *
          * bit-width = size of container for each sample
          * bit-depth = number of bits in container used for each sample
          */
-        struct SampleSpec
+        struct StreamSpec
         {
             /// @brief sample format (includes bit-width & planar/interleaved)
             AVSampleFormat format;
+            /// @brief units of duration, use av_rescale_q for conversions
+            AVRational timebase;
+            /// @brief total duration in time base units
+            int64_t duration;
             /// @brief bit-depth of each raw sample
             int bitdepth;
             /// @brief number of channels
@@ -107,12 +112,12 @@ namespace whfa
         void close();
 
         /**
-         * @brief get sample specification for currently opened codec
+         * @brief get stream specification for currently opened format & codec
          *
-         * @param[out] spec sample specification of stream
-         * @return false if codec is not opened
+         * @param[out] spec stream specification
+         * @return false if format & codec are invalid
          */
-        bool get_sample_spec(SampleSpec &spec);
+        bool get_stream_spec(StreamSpec &spec);
 
         /**
          * @brief get exclusive access to format context and stream index
