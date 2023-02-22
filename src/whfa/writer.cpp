@@ -74,9 +74,9 @@ namespace
     }
 
     /// @brief libav format -> asoundlib format map
-    constexpr const format_map __fmt_map = constSampleFormatMap();
+    constexpr const format_map __FMT_MAP = constSampleFormatMap();
     /// @brief libav format -> asoundlib access map
-    constexpr const access_map __acc_map = constSampleAccessMap();
+    constexpr const access_map __ACC_MAP = constSampleAccessMap();
 
     /**
      * @brief write 2 byte value to output file stream
@@ -117,14 +117,14 @@ namespace
         }
 
         const size_t fmt_idx = static_cast<size_t>(spec.format);
-        if (fmt_idx >= __fmt_map.size())
+        if (fmt_idx >= __FMT_MAP.size())
         {
             // unsupported format
             return -1;
         }
 
-        snd_pcm_format_t format = __fmt_map[fmt_idx];
-        snd_pcm_access_t access = __acc_map[fmt_idx];
+        snd_pcm_format_t format = __FMT_MAP[fmt_idx];
+        snd_pcm_access_t access = __ACC_MAP[fmt_idx];
 
         // special handling of 24 bit audio packed in 32 bits
         if (format == SND_PCM_FORMAT_S32 && spec.bitdepth == 24)
