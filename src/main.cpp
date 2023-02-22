@@ -24,15 +24,15 @@ namespace
     constexpr const char *__OUTWAV = "out.wav";
     constexpr const char *__OUTRAW = "out.raw";
 
-    char errbuf[__ERRBUFSZ];
+    char __errbuf[__ERRBUFSZ];
 
     void print_error(int averror)
     {
-        if (av_strerror(averror, errbuf, __ERRBUFSZ) != 0)
+        if (av_strerror(averror, __errbuf, __ERRBUFSZ) != 0)
         {
-            snprintf(errbuf, __ERRBUFSZ, "no error description found");
+            snprintf(__errbuf, __ERRBUFSZ, "no error description found");
         }
-        std::cerr << "AVERROR (" << averror << ") : " << errbuf << std::endl;
+        std::cerr << "AVERROR (" << averror << ") : " << __errbuf << std::endl;
     }
 }
 
