@@ -7,6 +7,10 @@
 namespace
 {
 
+    using choose_i64_type = const int64_t &(*)(const int64_t &, const int64_t &);
+    constexpr choose_i64_type min_i64 = std::min<int64_t>;
+    constexpr choose_i64_type max_i64 = std::max<int64_t>;
+
     /**
      * @brief used when flushing context packet queue
      *
@@ -54,10 +58,12 @@ bool whfa::Reader::seek(int64_t pos_pts)
     }
     else
     {
+        const int64_t dur_pts = fmt_ctxt->streams[s_idx]->duration;
         const int64_t conv_pts = av_rescale_q(pos_pts, AV_TIME_BASE_Q,
                                               fmt_ctxt->streams[s_idx]->time_base);
-        const int flags = (conv_pts < _state.timestamp) ? AVSEEK_FLAG_BACKWARD : 0;
-        const int rv = av_seek_frame(fmt_ctxt, s_idx, conv_pts, flags);
+        const int64_t clip_pts = min_i64(max_i64(conv_pts, 0), dur_pts);
+        const int flags = (clip_pts < _state.timestamp) ? AVSEEK_FLAG_BACKWARD : 0;
+        const int rv = av_seek_frame(fmt_ctxt, s_idx, clip_pts, flags);
         _ctxt->get_packet_queue().flush(free_packet);
         fmt_mtx->unlock();
 
@@ -114,9 +120,11 @@ bool whfa::Reader::seek(double pos_pct)
     }
     else
     {
-        const int64_t conv_pts = static_cast<int64_t>(pos_pct * fmt_ctxt->streams[s_idx]->duration);
-        const int flags = (conv_pts < _state.timestamp) ? AVSEEK_FLAG_BACKWARD : 0;
-        const int rv = av_seek_frame(fmt_ctxt, s_idx, conv_pts, flags);
+        const int64_t dur_pts = fmt_ctxt->streams[s_idx]->duration;
+        const int64_t conv_pts = static_cast<int64_t>(pos_pct * dur_pts);
+        const int64_t clip_pts = min_i64(max_i64(conv_pts, 0), dur_pts);
+        const int flags = (clip_pts < _state.timestamp) ? AVSEEK_FLAG_BACKWARD : 0;
+        const int rv = av_seek_frame(fmt_ctxt, s_idx, clip_pts, flags);
         _ctxt->get_packet_queue().flush();
         fmt_mtx->unlock();
 
