@@ -148,6 +148,7 @@ bool whfa::Context::get_sample_spec(SampleSpec &spec)
     if (rv)
     {
         spec.format = _cdc_ctxt->sample_fmt;
+        spec.bitdepth = _cdc_ctxt->bits_per_raw_sample;
         spec.rate = _cdc_ctxt->sample_rate;
         spec.channels = _cdc_ctxt->channels;
     }

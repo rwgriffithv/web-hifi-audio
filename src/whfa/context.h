@@ -50,11 +50,16 @@ namespace whfa
         /**
          * @struct whfa::Context::SampleSpec
          * @brief struct for holding sample information
+         *
+         * bit-width = size of container for each sample
+         * bit-depth = number of bits in container used for each sample
          */
         struct SampleSpec
         {
-            /// @brief sample format (includes bit-depth & planar/interleaved)
+            /// @brief sample format (includes bit-width & planar/interleaved)
             AVSampleFormat format;
+            /// @brief bit-depth of each raw sample
+            int bitdepth;
             /// @brief number of channels
             int channels;
             /// @brief sample frequency
