@@ -29,6 +29,11 @@ namespace whfa
     class Writer : public Context::Worker
     {
     public:
+        /// @brief function type to handle writing to device
+        using DeviceWriter = int (*)(snd_pcm_t *, const AVFrame &, const Context::StreamSpec &);
+        /// @brief function type to handle writing to file
+        using FileWriter = int (*)(std::ofstream &, const AVFrame &, const Context::StreamSpec &);
+        
         /**
          * @enum whfa::Writer::OutputType
          * @brief enum defining the output destination
@@ -53,15 +58,18 @@ namespace whfa
         /**
          * @brief open connection to output destiation to write to
          *
+         * sets mode, open connection, sets spec, and sets writer
+         * 
          * @param name the file or device name to use
          * @param mode the specified mode of output / writing
-         *
-         * @todo: take configuration from ../main.cpp and add ALSA hw configuration
+         * @return true on success, false otherwise
          */
         bool open(const char *name, OutputType mode);
 
         /**
          * @brief close open output destination(s)
+         * 
+         * @return true on success, false otherwise
          */
         bool close();
 
@@ -86,6 +94,10 @@ namespace whfa
         std::ofstream _ofs;
         /// @brief context stream specification
         Context::StreamSpec _spec;
+        /// @brief function to write to device with
+        DeviceWriter _dev_wfn;
+        /// @brief function to write to file with
+        FileWriter _file_wfn;
     };
 
 }

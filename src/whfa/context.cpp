@@ -136,9 +136,13 @@ int whfa::Context::open(const char *url)
 
 void whfa::Context::close()
 {
-    std::lock_guard<std::mutex> f_lk(_fmt_mtx);
-    std::lock_guard<std::mutex> c_lk(_cdc_mtx);
-    free_context(_fmt_ctxt, _cdc_ctxt, _stm_idx);
+    {
+        std::lock_guard<std::mutex> f_lk(_fmt_mtx);
+        std::lock_guard<std::mutex> c_lk(_cdc_mtx);
+        free_context(_fmt_ctxt, _cdc_ctxt, _stm_idx);
+    }
+    _frm_q.flush();
+    _pkt_q.flush();
 }
 
 bool whfa::Context::get_stream_spec(StreamSpec &spec)

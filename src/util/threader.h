@@ -34,6 +34,9 @@ namespace util
             int64_t timestamp;
         };
 
+        /// @brief callback type to be invoked when state is updated
+        using StateCallback = void (*)(const State &);
+
         /**
          * @brief destructor that sets state to terminate and joins thread
          */
@@ -41,25 +44,27 @@ namespace util
 
         /**
          * @brief sets state to run thread loop
+         *
+         * @param callback function to be invoked upon internal state changes
          */
-        virtual void start();
+        void start(StateCallback callback = nullptr);
 
         /**
          * @brief sets state to stop running thread loop and reset timestamp to 0
          */
-        virtual void stop();
+        void stop();
 
         /**
          * @brief sets state to stop running thread loop and maintains timestamp
          */
-        virtual void pause();
+        void pause();
 
         /**
          * @brief returns copy of state
          *
          * @param[out] state copy of internal State
          */
-        virtual void get_state(State &state);
+        void get_state(State &state);
 
     protected:
         /**
@@ -68,44 +73,77 @@ namespace util
         Threader();
 
         /**
-         * @brief waits or executes thread loop according to state
-         */
-        virtual void execute_loop();
-
-        /**
          * @brief pure virtual method to define work to execute in thread
          * @see Threaer::execute_loop()
          */
         virtual void execute_loop_body() = 0;
 
         /**
+         * @brief waits or executes thread loop according to state
+         */
+        void execute_loop();
+
+        /**
+         * @brief returns const access to internal state
+         * 
+         * @return internal state for reading
+        */
+        const State &get_state();
+
+        /**
          * @brief not threadsafe implementation of start()
          * @see Threader::start()
          */
-        virtual void set_state_start();
+        void set_state_start();
 
         /**
          * @brief not threadsafe implementation of stop()
          * @see Threader::stop()
          */
-        virtual void set_state_stop();
+        void set_state_stop();
+
+        /**
+         * @brief not threadsafe implementation of stop() while setting error
+         * @see Threader::stop()
+         *
+         * @param error error value to set
+         */
+        void set_state_stop(int error);
 
         /**
          * @brief not threadsafe implementation of pause()
          * @see Threader::pause()
          */
-        virtual void set_state_pause();
+        void set_state_pause();
 
         /**
-         * @brief not threadsafe convenience method to set state error
+         * @brief not threadsafe implementation of pause() while setting error
+         * @see Threader::pause()
+         *
+         * @param error error value to set
          */
-        virtual void set_state_error(int error);
+        void set_state_pause(int error);
 
-        /// @brief internal state
-        State _state;
+        /**
+         * @brief not threadsafe method to set state error
+         *
+         * @param error error value to set
+         */
+        void set_state_error(int error);
+
+        /**
+         * @brief not threadsafe
+         */
+        void set_state_timestamp(int64_t timestamp);
 
         /// @brief mutex for synchronizing access to state
         std::mutex _mtx;
+
+    private:
+        /// @brief internal state
+        State _state;
+        /// @brief state callback method (nullptr if no callback)
+        StateCallback _callback;
         /// @brief codition variable for thread waiting and notifying
         std::condition_variable _cond;
         /// @brief the thread that is running

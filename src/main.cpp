@@ -2,9 +2,9 @@
  * @file main.cpp
  * @author Robert Griffith
  *
- * @todo: move into whfa::Writer
- * @todo: implement cli and test methods
- * @todo: building on WSL still has linking errors, makefile was hacked together to just find compile-time errors better
+ * @todo make use of util::Thread::StateCallback functions when starting Workers
+ * @todo implement cli and test methods
+ * @todo building on WSL still has linking errors, makefile was hacked together to just find compile-time errors better
  */
 #include "whfa/decoder.h"
 #include "whfa/reader.h"

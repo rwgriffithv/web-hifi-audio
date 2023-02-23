@@ -7,9 +7,9 @@
 namespace
 {
 
-    using choose_i64_type = const int64_t &(*)(const int64_t &, const int64_t &);
-    constexpr choose_i64_type min_i64 = std::min<int64_t>;
-    constexpr choose_i64_type max_i64 = std::max<int64_t>;
+    using Choose64 = const int64_t &(*)(const int64_t &, const int64_t &);
+    constexpr Choose64 min_i64 = std::min<int64_t>;
+    constexpr Choose64 max_i64 = std::max<int64_t>;
 
     /**
      * @brief used when flushing context packet queue
@@ -62,7 +62,7 @@ bool whfa::Reader::seek(int64_t pos_pts)
         const int64_t conv_pts = av_rescale_q(pos_pts, AV_TIME_BASE_Q,
                                               fmt_ctxt->streams[s_idx]->time_base);
         const int64_t clip_pts = min_i64(max_i64(conv_pts, 0), dur_pts);
-        const int flags = (clip_pts < _state.timestamp) ? AVSEEK_FLAG_BACKWARD : 0;
+        const int flags = (clip_pts < get_state().timestamp) ? AVSEEK_FLAG_BACKWARD : 0;
         const int rv = av_seek_frame(fmt_ctxt, s_idx, clip_pts, flags);
         _ctxt->get_packet_queue().flush(free_packet);
         fmt_mtx->unlock();
@@ -92,13 +92,12 @@ bool whfa::Reader::seek(int64_t pos_pts)
     {
         if (stop)
         {
-            set_state_stop();
+            set_state_stop(err);
         }
         else
         {
-            set_state_pause();
+            set_state_pause(err);
         }
-        set_state_error(err);
         return false;
     }
     return true;
@@ -123,7 +122,7 @@ bool whfa::Reader::seek(double pos_pct)
         const int64_t dur_pts = fmt_ctxt->streams[s_idx]->duration;
         const int64_t conv_pts = static_cast<int64_t>(pos_pct * dur_pts);
         const int64_t clip_pts = min_i64(max_i64(conv_pts, 0), dur_pts);
-        const int flags = (clip_pts < _state.timestamp) ? AVSEEK_FLAG_BACKWARD : 0;
+        const int flags = (clip_pts < get_state().timestamp) ? AVSEEK_FLAG_BACKWARD : 0;
         const int rv = av_seek_frame(fmt_ctxt, s_idx, clip_pts, flags);
         _ctxt->get_packet_queue().flush();
         fmt_mtx->unlock();
@@ -153,13 +152,12 @@ bool whfa::Reader::seek(double pos_pct)
     {
         if (stop)
         {
-            set_state_stop();
+            set_state_stop(err);
         }
         else
         {
-            set_state_pause();
+            set_state_pause(err);
         }
-        set_state_error(err);
         return false;
     }
     return true;
@@ -171,33 +169,34 @@ bool whfa::Reader::seek(double pos_pct)
 
 void whfa::Reader::execute_loop_body()
 {
+    util::DBPQueue<AVPacket> &pkt_queue = _ctxt->get_packet_queue();
+
     std::mutex *fmt_mtx;
     AVFormatContext *fmt_ctxt;
     int s_idx;
     fmt_mtx = _ctxt->get_format(fmt_ctxt, s_idx);
     if (fmt_mtx == nullptr)
     {
-        set_state_stop();
-        set_state_error(Worker::FORMATINVAL);
+        set_state_stop(Worker::FORMATINVAL);
         return;
     }
 
-    util::DBPQueue<AVPacket> &queue = _ctxt->get_packet_queue();
     AVPacket *packet = av_packet_alloc();
     int rv;
     while ((rv = av_read_frame(fmt_ctxt, packet)) == 0)
     {
         if (packet->stream_index == s_idx)
         {
-            if (queue.push(packet))
+            if (pkt_queue.push(packet))
             {
-                _state.timestamp = packet->pts + packet->duration;
+                set_state_timestamp(packet->pts + packet->duration);
                 packet = nullptr;
             }
             break;
         }
     }
     fmt_mtx->unlock();
+
     if (packet != nullptr)
     {
         // flush or no desired packet found, not an error state
@@ -205,11 +204,14 @@ void whfa::Reader::execute_loop_body()
     }
     if (rv == AVERROR_EOF)
     {
+        // EOF, stop and forward
         set_state_stop();
+        while (!pkt_queue.push(nullptr))
+        {
+        }
     }
     else if (rv != 0)
     {
-        set_state_pause();
-        set_state_error(rv);
+        set_state_pause(rv);
     }
 }

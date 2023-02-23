@@ -2,7 +2,9 @@
  * @file writer.cpp
  * @author Robert Griffith
  *
- * @todo: consider exposing device resampling and latency in public methods
+ * @todo consider exposing device resampling and latency in public methods
+ * @todo use map (array) of function pointers to handle writing different formats
+ * @todo map indexed by spec.format
  */
 #include "writer.h"
 
@@ -23,17 +25,19 @@ namespace
     /// @brief number of supported libav formats
     constexpr size_t __NUM_AVFMTS = 10;
 
-    using sndfmt_map = std::array<snd_pcm_format_t, __NUM_AVFMTS>;
-    using wavfmt_map = std::array<uint16_t, __NUM_AVFMTS>;
+    using SndFormatMap = std::array<snd_pcm_format_t, __NUM_AVFMTS>;
+    using WavFormatMap = std::array<uint16_t, __NUM_AVFMTS>;
+    using DevWriterMap = std::array<whfa::Writer::DeviceWriter, __NUM_AVFMTS>;
+    using FileWriterMap = std::array<whfa::Writer::FileWriter, __NUM_AVFMTS>;
 
     /**
      * @brief compile time construction of sample format type map
      *
-     * libav format -> asoundlib format
+     * libav format -> asoundlib format (24 bit needs help)
      */
-    constexpr sndfmt_map constSampleFormatMap()
+    constexpr SndFormatMap constSampleFormatMap()
     {
-        sndfmt_map map = {SND_PCM_FORMAT_UNKNOWN};
+        SndFormatMap map = {SND_PCM_FORMAT_UNKNOWN};
         // 8 bit
         map[AV_SAMPLE_FMT_U8] = SND_PCM_FORMAT_U8;
         map[AV_SAMPLE_FMT_U8P] = SND_PCM_FORMAT_U8;
@@ -58,9 +62,9 @@ namespace
      *
      * libav format -> wav chunk format tag
      */
-    constexpr wavfmt_map constWAVFormatMap()
+    constexpr WavFormatMap constWavFormatMap()
     {
-        wavfmt_map map = {0};
+        WavFormatMap map = {0};
         // 8 bit
         map[AV_SAMPLE_FMT_U8] = __WAVFMT_PCM;
         map[AV_SAMPLE_FMT_U8P] = __WAVFMT_PCM;
@@ -80,10 +84,170 @@ namespace
         return map;
     }
 
-    /// @brief libav format -> asoundlib format map
-    constexpr const sndfmt_map __SNDFMT_MAP = constSampleFormatMap();
+    /// @todo implement all device writers
+
+    int write_dev_u8(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_dev_u8_p(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_dev_s16(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_dev_s16_p(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_dev_s24(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_dev_s24_p(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_dev_s32(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_dev_s32_p(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_dev_flt(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_dev_flt_p(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_dev_dbl(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_dev_dbl_p(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+
+    /**
+     * @brief compile time construction of device writer map
+     *
+     * libav format -> device writer (24 bit needs help)
+     */
+    constexpr DevWriterMap constDevWriterMap()
+    {
+        DevWriterMap map = {nullptr};
+        // 8 bit
+        map[AV_SAMPLE_FMT_U8] = write_dev_u8;
+        map[AV_SAMPLE_FMT_U8P] = write_dev_u8_p;
+        // 16 bit
+        map[AV_SAMPLE_FMT_S16] = write_dev_s16;
+        map[AV_SAMPLE_FMT_S16P] = write_dev_s16_p;
+        // 24 or 32 bit
+        map[AV_SAMPLE_FMT_S32] = write_dev_s32;
+        map[AV_SAMPLE_FMT_S32P] = write_dev_s32_p;
+        // float
+        map[AV_SAMPLE_FMT_FLT] = write_dev_flt;
+        map[AV_SAMPLE_FMT_FLTP] = write_dev_flt_p;
+        // double
+        map[AV_SAMPLE_FMT_DBL] = write_dev_dbl;
+        map[AV_SAMPLE_FMT_DBLP] = write_dev_dbl_p;
+        // 64 bit not supported
+        return map;
+    }
+
+    /// @todo implement all file writers
+
+    int write_file_u8(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_file_u8_p(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_file_s16(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_file_s16_p(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_file_s24(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_file_s24_p(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_file_s32(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_file_s32_p(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_file_flt(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_file_flt_p(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_file_dbl(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+    int write_file_dbl_p(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    {
+        return -1;
+    }
+
+    /**
+     * @brief compile time construction of file writer map
+     *
+     * libav format -> file writer (24 bit needs help)
+     */
+    constexpr FileWriterMap constFileWriterMap()
+    {
+        FileWriterMap map = {nullptr};
+        // 8 bit
+        map[AV_SAMPLE_FMT_U8] = write_file_u8;
+        map[AV_SAMPLE_FMT_U8P] = write_file_u8_p;
+        // 16 bit
+        map[AV_SAMPLE_FMT_S16] = write_file_s16;
+        map[AV_SAMPLE_FMT_S16P] = write_file_s16_p;
+        // 24 or 32 bit
+        map[AV_SAMPLE_FMT_S32] = write_file_s32;
+        map[AV_SAMPLE_FMT_S32P] = write_file_s32_p;
+        // float
+        map[AV_SAMPLE_FMT_FLT] = write_file_flt;
+        map[AV_SAMPLE_FMT_FLTP] = write_file_flt_p;
+        // double
+        map[AV_SAMPLE_FMT_DBL] = write_file_dbl;
+        map[AV_SAMPLE_FMT_DBLP] = write_file_dbl_p;
+        // 64 bit not supported
+        return map;
+    }
+
+    /// @brief libav format -> asoundlib format
+    constexpr const SndFormatMap __SNDFMT_MAP = constSampleFormatMap();
     /// @brief libav format -> wav chunk format tag
-    constexpr const wavfmt_map __WAVFMT_MAP = constWAVFormatMap();
+    constexpr const WavFormatMap __WAVFMT_MAP = constWavFormatMap();
+    /// @brief libav format -> device writer function
+    constexpr const DevWriterMap __DEVWFN_MAP = constDevWriterMap();
+    /// @brief libav format -> file writer function
+    constexpr const FileWriterMap __FILEWFN_MAP = constFileWriterMap();
 
     /**
      * @brief write 2 byte value to output file stream
@@ -228,7 +392,14 @@ namespace
         const int blocksz = spec.channels * spec.bitdepth >> 3;
         const int datasz = blockcnt * blocksz;
 
-        const uint16_t fmt = __WAVFMT_MAP[spec.format];
+        const size_t fmt_idx = static_cast<size_t>(spec.format);
+        if (fmt_idx >= __WAVFMT_MAP.size())
+        {
+            // unsupported format
+            return -1;
+        }
+
+        const uint16_t fmt = __WAVFMT_MAP[fmt_idx];
         int chunksz_fmt;
         switch (fmt)
         {
@@ -290,6 +461,66 @@ namespace
 
         return ofs ? 0 : ofs.rdstate();
     }
+
+    /**
+     * @brief select device writer according to stream specification
+     *
+     * @param spec stream specification
+     * @return device writer, nullptr on invalid/unsupported spec
+     */
+    whfa::Writer::DeviceWriter get_dev_writer(const whfa::Context::StreamSpec &spec)
+    {
+        const size_t fmt_idx = static_cast<size_t>(spec.format);
+        if (fmt_idx >= __DEVWFN_MAP.size())
+        {
+            // unsupported format
+            return nullptr;
+        }
+        whfa::Writer::DeviceWriter writer = __DEVWFN_MAP[fmt_idx];
+        // special handling of 24 bit audio packed in 32 bits
+        if (spec.bitdepth == 24)
+        {
+            if (writer == write_dev_s32)
+            {
+                writer = write_dev_s24;
+            }
+            else if (writer == write_dev_s32_p)
+            {
+                writer = write_dev_s24_p;
+            }
+        }
+        return writer;
+    }
+
+    /**
+     * @brief select file writer according to stream specification
+     *
+     * @param spec stream specification
+     * @return file writer, nullptr on invalid/unsupported spec
+     */
+    whfa::Writer::FileWriter get_file_writer(const whfa::Context::StreamSpec &spec)
+    {
+        const size_t fmt_idx = static_cast<size_t>(spec.format);
+        if (fmt_idx >= __FILEWFN_MAP.size())
+        {
+            // unsupported format
+            return nullptr;
+        }
+        whfa::Writer::FileWriter writer = __FILEWFN_MAP[fmt_idx];
+        // special handling of 24 bit audio packed in 32 bits
+        if (spec.bitdepth == 24)
+        {
+            if (writer == write_file_s32)
+            {
+                writer = write_file_s24;
+            }
+            else if (writer == write_file_s32_p)
+            {
+                writer = write_file_s24_p;
+            }
+        }
+        return writer;
+    }
 }
 
 /**
@@ -299,7 +530,9 @@ namespace
 whfa::Writer::Writer(whfa::Context &context)
     : Worker(context),
       _mode(OutputType::DEVICE),
-      _dev(nullptr)
+      _dev(nullptr),
+      _dev_wfn(nullptr),
+      _file_wfn(nullptr)
 {
 }
 
@@ -312,8 +545,7 @@ bool whfa::Writer::open(const char *name, OutputType mode)
 
     if (!_ctxt->get_stream_spec(_spec))
     {
-        set_state_stop();
-        set_state_error(Worker::FORMATINVAL | Worker::CODECINVAL);
+        set_state_stop(Worker::FORMATINVAL | Worker::CODECINVAL);
     }
 
     int rv = 0;
@@ -321,20 +553,23 @@ bool whfa::Writer::open(const char *name, OutputType mode)
     {
     case DEVICE:
         rv = open_dev(_dev, name, _spec);
+        _dev_wfn = get_dev_writer(_spec);
     case FILE_RAW:
         rv = open_file_raw(_ofs, name, _spec);
+        _file_wfn = get_file_writer(_spec);
         break;
     case FILE_WAV:
         rv = open_file_wav(_ofs, name, _spec);
+        _file_wfn = get_file_writer(_spec);
         break;
     }
     if (rv != 0)
     {
+        set_state_stop(rv);
         close_unsafe();
-        set_state_stop();
-        set_state_error(rv);
+        return false;
     }
-    return false;
+    return true;
 }
 
 bool whfa::Writer::close()
@@ -351,6 +586,14 @@ void whfa::Writer::execute_loop_body()
 {
     switch (_mode)
     {
+    case DEVICE:
+        if (_dev == nullptr)
+        {
+            set_state_stop();
+            return;
+        }
+        // snd_pcm_writei
+        break;
     case FILE_RAW:
     case FILE_WAV:
         if (!_ofs.is_open())
@@ -360,20 +603,41 @@ void whfa::Writer::execute_loop_body()
         }
         else if (!_ofs)
         {
-            set_state_pause();
-            set_state_error(_ofs.rdstate());
+            set_state_pause(_ofs.rdstate());
             return;
         }
         // both are now writing interleaved binary samples
         break;
+    }
+
+    AVFrame *frame;
+    if (!_ctxt->get_frame_queue().pop(frame))
+    {
+        // due to flush, not an error state
+        return;
+    }
+    if (frame == nullptr)
+    {
+        // EOF, stop and close (no queue to forward to)
+        set_state_stop();
+        close_unsafe();
+        return;
+    }
+
+    int rv;
+    switch (_mode)
+    {
     case DEVICE:
-        if (_dev == nullptr)
-        {
-            set_state_stop();
-            return;
-        }
-        // snd_pcm_writei
+        rv = _dev_wfn(_dev, *frame, _spec);
         break;
+    case FILE_RAW:
+    case FILE_WAV:
+        rv = _file_wfn(_ofs, *frame, _spec);
+        break;
+    }
+    if (rv != 0)
+    {
+        set_state_pause(rv);
     }
 }
 
@@ -386,13 +650,14 @@ bool whfa::Writer::close_unsafe()
         rv |= snd_pcm_close(_dev);
         if (rv < 0)
         {
-            set_state_pause();
-            set_state_error(rv);
+            set_state_pause(rv);
         }
     }
     if (_ofs.is_open())
     {
         _ofs.close();
     }
+    _dev_wfn = nullptr;
+    _file_wfn = nullptr;
     return false;
 }

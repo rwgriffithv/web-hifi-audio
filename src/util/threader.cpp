@@ -17,10 +17,11 @@ util::Threader::~Threader()
     _thread.join();
 }
 
-void util::Threader::start()
+void util::Threader::start(StateCallback callback)
 {
     {
         std::lock_guard<std::mutex> lock(_mtx);
+        _callback = callback;
         set_state_start();
     }
     _cond.notify_one();
@@ -53,6 +54,7 @@ util::Threader::Threader()
               .terminate = false,
               .error = 0,
               .timestamp = 0}),
+      _callback(nullptr),
       _thread(&Threader::execute_loop, this)
 {
 }
@@ -77,25 +79,76 @@ void util::Threader::execute_loop()
     } while (true);
 }
 
+const util::Threader::State &util::Threader::get_state()
+{
+    return _state;
+}
+
 void util::Threader::set_state_start()
 {
     _state.run = true;
     _state.error = 0;
     _state.timestamp = 0;
+    if (_callback != nullptr)
+    {
+        _callback(_state);
+    }
 }
 
 void util::Threader::set_state_stop()
 {
     _state.run = false;
     _state.timestamp = 0;
+    if (_callback != nullptr)
+    {
+        _callback(_state);
+    }
+}
+
+void util::Threader::set_state_stop(int error)
+{
+    _state.run = false;
+    _state.timestamp = 0;
+    _state.error = error;
+    if (_callback != nullptr)
+    {
+        _callback(_state);
+    }
 }
 
 void util::Threader::set_state_pause()
 {
     _state.run = false;
+    if (_callback != nullptr)
+    {
+        _callback(_state);
+    }
+}
+
+void util::Threader::set_state_pause(int error)
+{
+    _state.run = false;
+    _state.error = error;
+    if (_callback != nullptr)
+    {
+        _callback(_state);
+    }
 }
 
 void util::Threader::set_state_error(int error)
 {
     _state.error = error;
+    if (_callback != nullptr)
+    {
+        _callback(_state);
+    }
+}
+
+void util::Threader::set_state_timestamp(int64_t timestamp)
+{
+    _state.timestamp = timestamp;
+    if (_callback != nullptr)
+    {
+        _callback(_state);
+    }
 }
