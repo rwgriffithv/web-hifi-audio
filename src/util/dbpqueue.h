@@ -26,12 +26,15 @@ namespace util
     class DBPQueue
     {
     public:
+        /// @brief callback type to be invoked when flushing
+        using FlushCallback = void (*)(T *);
         /**
          * @brief constructor
          *
          * @param capacity the ideal target capacity
+         * @param callback default callback to invoke when flushing
          */
-        DBPQueue(size_t capacity);
+        DBPQueue(size_t capacity, FlushCallback callback = nullptr);
 
         /**
          * @brief destructor
@@ -39,23 +42,16 @@ namespace util
         ~DBPQueue();
 
         /**
-         * @brief clear queue
+         * @brief clear queue and handle invoked on each popped element
          *
          * notify all waiting threads
          * waiting push and pop calls will return false
+         * callback primarily required for proper destruction and freeing of heap memory
+         * ideally only need to use default callback specified during construction
+         *
+         * @param callback function to invoked on popped pointers, nullptr = use default
          */
-        void flush();
-
-        /**
-        * @brief clear queue and handle invoked on each popped element
-
-        * primarily required for proper destruction and freeing of heap memory
-        * notify all waiting threads
-        * waiting push and pop calls will return false
-        *
-        * @param handle function pointer invoked with each popped element in order
-        */
-        void flush(void (*handle)(T *ptr));
+        void flush(FlushCallback callback = nullptr);
 
         /**
          * @brief remove and retrieve first element in queue
@@ -147,6 +143,8 @@ namespace util
 
         /// @brief capacity of each underlying buffer
         size_t _capacity;
+        /// @brief default flush callback to invoke
+        FlushCallback _callback;
 
         /// @brief pop buffer data
         BufferData _pop_buf;

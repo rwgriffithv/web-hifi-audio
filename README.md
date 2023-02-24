@@ -1,12 +1,9 @@
 Web HiFi Audio (whfa)
 
-Linux application to decode audio files and web streams, bypass mixing and resampling, and send PCM directly to sound cards (external DAC ideally) through ALSA
+Linux application to decode audio files and web streams, bypass mixing and resampling, and send PCM directly to sound cards (external DAC ideally)
 
 near-term todo:
 
-- PCM format handling
-- PCM file writing refactor
-- ALSA sound card interfacing
 - web API for local file support
 - libav networked stream handling
 - web API for remote file support
@@ -15,11 +12,12 @@ near-term todo:
 needs test:
 
 - multithreaded file reading, decoding, and basic controls
-- PCM file writing
 - EOF handling
+- raw PCM & WAV file writing
+- sound card device writing
 
 dependencies:
 
 - libavformat : file and stream parsing
 - libavcodec : file and stream decoding
-- alsa : sound card interfacing
+- asoundlib : sound card interfacing

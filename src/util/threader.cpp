@@ -11,7 +11,7 @@
 util::Threader::~Threader()
 {
     std::unique_lock<std::mutex> lock(_mtx);
-    _state.terminate = true;
+    _terminate = true;
     lock.unlock();
     _cond.notify_one();
     _thread.join();
@@ -51,10 +51,10 @@ void util::Threader::get_state(State &state)
 
 util::Threader::Threader()
     : _state({.run = false,
-              .terminate = false,
               .error = 0,
               .timestamp = 0}),
       _callback(nullptr),
+      _terminate(false),
       _thread(&Threader::execute_loop, this)
 {
 }
@@ -66,9 +66,9 @@ void util::Threader::execute_loop()
         std::unique_lock<std::mutex> lock(_mtx);
         _cond.wait(
             lock, [=]
-            { return _state.run || _state.terminate; });
+            { return _state.run || _terminate; });
         // entire loop body remains locked
-        if (_state.terminate)
+        if (_terminate)
         {
             break;
         }

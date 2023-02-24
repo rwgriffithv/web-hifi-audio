@@ -33,6 +33,26 @@ namespace
     }
 
     /**
+     * @brief used when flushing context packet queue
+     *
+     * @param packet libav packet to free
+     */
+    void free_packet(AVPacket *packet)
+    {
+        av_packet_free(&packet);
+    }
+
+    /**
+     * @brief used when flushing context frame queue
+     *
+     * @param frame libav frame to free
+     */
+    void free_frame(AVFrame *frame)
+    {
+        av_frame_free(&frame);
+    }
+
+    /**
      * @brief frees format and codec context, sets to nullptrs and invalid stream index
      * @param[out] format format context to free and set to nullptr
      * @param[out] codec codec context to free and set to nullptr
@@ -83,8 +103,8 @@ whfa::Context::Context(size_t packet_queue_capacity, size_t frame_queue_capacity
     : _fmt_ctxt(nullptr),
       _cdc_ctxt(nullptr),
       _stm_idx(-1),
-      _pkt_q(packet_queue_capacity),
-      _frm_q(frame_queue_capacity)
+      _pkt_q(packet_queue_capacity, free_packet),
+      _frm_q(frame_queue_capacity, free_frame)
 {
 }
 
@@ -99,6 +119,8 @@ int whfa::Context::open(const char *url)
     std::lock_guard<std::mutex> c_lk(_cdc_mtx);
 
     free_context(_fmt_ctxt, _cdc_ctxt, _stm_idx);
+    _frm_q.flush();
+    _pkt_q.flush();
 
     int rv;
     if ((rv = !avformat_open_input(&_fmt_ctxt, url, nullptr, nullptr)) != 0)

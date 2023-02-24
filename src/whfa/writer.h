@@ -20,17 +20,15 @@ namespace whfa
      * context worker class to abstract forwarding libav frames to files and devices
      * will write to only one sink at a time (potentially changed later)
      * a context should only have one writer, as it consumes frames destructively from the queue
-     *
-     * @todo: create member objects required to facilitate open() and close()
-     * @todo: write raw PCM to sound card using ALSA
-     * @todo: determine queue pop timeouts from SampleSpec rate
+     * 
+     * @todo: utilize queue pop timeouts? period determined from sample rate?
      * @todo: try doing multiple OutputTypes at once (could make it a bitfield to OR together)
      */
     class Writer : public Context::Worker
     {
     public:
         /// @brief function type to handle writing to device
-        using DeviceWriter = int (*)(snd_pcm_t *, const AVFrame &, const Context::StreamSpec &);
+        using DeviceWriter = int (*)(snd_pcm_t *, const AVFrame &, const Context::StreamSpec &, void **);
         /// @brief function type to handle writing to file
         using FileWriter = int (*)(std::ofstream &, const AVFrame &, const Context::StreamSpec &);
         
@@ -54,6 +52,11 @@ namespace whfa
          * @param context threadsafe audio context to access
          */
         Writer(Context &context);
+
+        /**
+         * @brief destructor to ensure file closure
+         */
+        ~Writer();
 
         /**
          * @brief open connection to output destiation to write to
@@ -94,6 +97,8 @@ namespace whfa
         std::ofstream _ofs;
         /// @brief context stream specification
         Context::StreamSpec _spec;
+        /// @brief planar data pointer buffer
+        void **_pbuf;
         /// @brief function to write to device with
         DeviceWriter _dev_wfn;
         /// @brief function to write to file with

@@ -91,8 +91,9 @@ namespace whfa
          * @param frame_queue_capacity capacity of underlying frame DBPQueue
          */
         Context(size_t packet_queue_capacity, size_t frame_queue_capacity);
+
         /**
-         * @brief destructor
+         * @brief destructor, closes context
          */
         virtual ~Context();
 

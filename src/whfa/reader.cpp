@@ -11,26 +11,6 @@ namespace
     constexpr Choose64 min_i64 = std::min<int64_t>;
     constexpr Choose64 max_i64 = std::max<int64_t>;
 
-    /**
-     * @brief used when flushing context packet queue
-     *
-     * @param packet libav packet to free
-     */
-    void free_packet(AVPacket *packet)
-    {
-        av_packet_free(&packet);
-    }
-
-    /**
-     * @brief used when flushing context frame queue
-     *
-     * @param frame libav frame to free
-     */
-    void free_frame(AVFrame *frame)
-    {
-        av_frame_free(&frame);
-    }
-
 }
 
 /**
@@ -64,7 +44,7 @@ bool whfa::Reader::seek(int64_t pos_pts)
         const int64_t clip_pts = min_i64(max_i64(conv_pts, 0), dur_pts);
         const int flags = (clip_pts < get_state().timestamp) ? AVSEEK_FLAG_BACKWARD : 0;
         const int rv = av_seek_frame(fmt_ctxt, s_idx, clip_pts, flags);
-        _ctxt->get_packet_queue().flush(free_packet);
+        _ctxt->get_packet_queue().flush();
         fmt_mtx->unlock();
 
         if (rv < 0)
@@ -83,7 +63,7 @@ bool whfa::Reader::seek(int64_t pos_pts)
             else
             {
                 avcodec_flush_buffers(cdc_ctxt);
-                _ctxt->get_frame_queue().flush(free_frame);
+                _ctxt->get_frame_queue().flush();
                 cdc_mtx->unlock();
             }
         }

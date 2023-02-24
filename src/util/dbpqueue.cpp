@@ -9,8 +9,9 @@
  */
 
 template <typename T>
-util::DBPQueue<T>::DBPQueue(size_t capacity)
+util::DBPQueue<T>::DBPQueue(size_t capacity, FlushCallback callback)
     : _capacity(capacity),
+      _callback(callback),
       _push_buf({.buf = new T *[capacity],
                  .pos = 0,
                  .sz = 0}),
@@ -33,40 +34,19 @@ util::DBPQueue<T>::~DBPQueue()
 }
 
 template <typename T>
-void util::DBPQueue<T>::flush()
+void util::DBPQueue<T>::flush(FlushCallback callback)
 {
+    FlushCallback cb = (callback == nullptr) ? _callback : callback;
 
     {
         std::lock_guard<std::mutex>(_pop_mtx);
         _pop_st.flush = true;
-        _pop_buf.pos = 0;
-        _pop_buf.sz = 0;
-    }
-    _pop_cond.notify_all();
-
-    {
-        std::lock_guard<std::mutex>(_push_mtx);
-        _push_st.flush = true;
-        _push_buf.sz = 0;
-    }
-    _push_cond.notify_all();
-}
-
-template <typename T>
-void util::DBPQueue<T>::flush(void (*handle)(T *ptr))
-{
-    if (handle == nullptr)
-    {
-        flush();
-        return;
-    }
-
-    {
-        std::lock_guard<std::mutex>(_pop_mtx);
-        _pop_st.flush = true;
-        while (_pop_buf.pos != _pop_buf.sz)
+        if (cb != nullptr)
         {
-            handle(_pop_buf.buf[_pop_buf.pos++]);
+            while (_pop_buf.pos != _pop_buf.sz)
+            {
+                cb(_pop_buf.buf[_pop_buf.pos++]);
+            }
         }
         _pop_buf.pos = 0;
         _pop_buf.sz = 0;
@@ -76,10 +56,12 @@ void util::DBPQueue<T>::flush(void (*handle)(T *ptr))
     {
         std::lock_guard<std::mutex>(_push_mtx);
         _push_st.flush = true;
-        size_t i = 0;
-        while (i != _push_buf.sz)
-        {
-            op(_push_buf[i++]);
+        if (cb != nullptr) {
+            size_t i = 0;
+            while (i != _push_buf.sz)
+            {
+                cb(_push_buf[i++]);
+            }
         }
         _push_buf.sz = 0;
     }

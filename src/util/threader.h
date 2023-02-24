@@ -26,8 +26,6 @@ namespace util
         {
             /// @brief true if thread should execute thread_loop_body()
             bool run;
-            /// @brief true if thread should terminate
-            bool terminate;
             /// @brief error value
             int error;
             /// @brief timestamp
@@ -85,9 +83,9 @@ namespace util
 
         /**
          * @brief returns const access to internal state
-         * 
+         *
          * @return internal state for reading
-        */
+         */
         const State &get_state();
 
         /**
@@ -144,6 +142,8 @@ namespace util
         State _state;
         /// @brief state callback method (nullptr if no callback)
         StateCallback _callback;
+        /// @brief true if thread should terminate, hidden logic not exposed in State
+        bool _terminate;
         /// @brief codition variable for thread waiting and notifying
         std::condition_variable _cond;
         /// @brief the thread that is running
