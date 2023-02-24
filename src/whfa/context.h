@@ -19,7 +19,7 @@ namespace whfa
      * @class whfa::Context
      * @brief threadsafe class for synchronized shared context of one audio stream
      *
-     * provides synchronized access to libav audio context objects and packet and frame queues
+     * provides synchronized access to ffmpeg audio context objects and packet and frame queues
      * designed for demuxing one audio stream and facilitating parallel operation
      */
     class Context
@@ -44,7 +44,7 @@ namespace whfa
              */
             Worker(Context &context);
 
-            /// @brief the libav audio context object
+            /// @brief the ffmpeg audio context object
             Context *_ctxt;
         };
 
@@ -72,15 +72,15 @@ namespace whfa
         };
 
         /**
-         * @brief  register all available codec formats with libav
+         * @brief  register all available codec formats with ffmpeg
          */
         static void register_formats();
         /**
-         * @brief  enable support for opening networked streams with libav
+         * @brief  enable support for opening networked streams with ffmpeg
          */
         static void enable_networking();
         /**
-         * @brief  disable support for opening networked streams with libav
+         * @brief  disable support for opening networked streams with ffmpeg
          */
         static void disable_networking();
 
@@ -98,11 +98,11 @@ namespace whfa
         virtual ~Context();
 
         /**
-         * @brief open libav stream and sets format and codec context if valid audio source
+         * @brief open ffmpeg stream and sets format and codec context if valid audio source
          *
          * format and codec members are attempted to be freed upon error
          *
-         * @param url libav stream string to source
+         * @param url ffmpeg stream string to source
          * @return error int, 0 on success
          */
         int open(const char *url);
@@ -164,9 +164,9 @@ namespace whfa
         util::DBPQueue<AVFrame> &get_frame_queue();
 
     protected:
-        /// @brief libav format context (nullptr if invalid)
+        /// @brief ffmpeg format context (nullptr if invalid)
         AVFormatContext *_fmt_ctxt;
-        /// @brief libav codec context (nullptr if invalid)
+        /// @brief ffmpeg codec context (nullptr if invalid)
         AVCodecContext *_cdc_ctxt;
         /// @brief stream index to audio stream in format context (-1 if invalid)
         int _stm_idx;
@@ -176,9 +176,9 @@ namespace whfa
         /// @brief mutex synchronizing access to codec context
         std::mutex _cdc_mtx;
 
-        /// @brief threadsafe queue of pointers to libav packets on the heap
+        /// @brief threadsafe queue of pointers to ffmpeg packets on the heap
         util::DBPQueue<AVPacket> _pkt_q;
-        /// @brief threadsafe queue of pointers to libav frames on the heap
+        /// @brief threadsafe queue of pointers to ffmpeg frames on the heap
         util::DBPQueue<AVFrame> _frm_q;
     };
 
