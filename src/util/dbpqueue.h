@@ -28,6 +28,7 @@ namespace util
     public:
         /// @brief callback type to be invoked when flushing
         using FlushCallback = void (*)(T *);
+        
         /**
          * @brief constructor
          *
