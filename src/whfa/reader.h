@@ -13,7 +13,7 @@ namespace whfa
      * @class whfa::Reader
      * @brief class for parallel reading of packets from an audio stream into a queue
      *
-     * context worker class to abstract reading packets using ffmpeg and seeking to new positions
+     * context worker class to abstract reading packets using libav and seeking to new positions
      */
     class Reader : public Context::Worker
     {

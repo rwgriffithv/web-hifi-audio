@@ -17,10 +17,10 @@ namespace whfa
      * @class whfa::Writer
      * @brief class for parallel writing of PCM audio frames
      *
-     * context worker class to abstract forwarding ffmpeg audio frames to files and devices
+     * context worker class to abstract forwarding libav frames to files and devices
      * will write to only one sink at a time (potentially changed later)
      * a context should only have one writer, as it consumes frames destructively from the queue
-     *
+     * 
      * @todo: utilize queue pop timeouts? period determined from sample rate?
      * @todo: try doing multiple OutputTypes at once (could make it a bitfield to OR together)
      */
@@ -31,7 +31,7 @@ namespace whfa
         using DeviceWriter = int (*)(snd_pcm_t *, const AVFrame &, const Context::StreamSpec &, void **);
         /// @brief function type to handle writing to file
         using FileWriter = int (*)(std::ofstream &, const AVFrame &, const Context::StreamSpec &);
-
+        
         /**
          * @enum whfa::Writer::OutputType
          * @brief enum defining the output destination
@@ -62,7 +62,7 @@ namespace whfa
          * @brief open connection to output destiation to write to
          *
          * sets mode, open connection, sets spec, and sets writer
-         *
+         * 
          * @param name the file or device name to use
          * @param mode the specified mode of output / writing
          * @return true on success, false otherwise
@@ -71,7 +71,7 @@ namespace whfa
 
         /**
          * @brief close open output destination(s)
-         *
+         * 
          * @return true on success, false otherwise
          */
         bool close();

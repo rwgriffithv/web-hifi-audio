@@ -35,7 +35,7 @@ namespace
     /**
      * @brief used when flushing context packet queue
      *
-     * @param packet ffmpeg packet to free
+     * @param packet libav packet to free
      */
     void free_packet(AVPacket *packet)
     {
@@ -45,7 +45,7 @@ namespace
     /**
      * @brief used when flushing context frame queue
      *
-     * @param frame ffmpeg frame to free
+     * @param frame libav frame to free
      */
     void free_frame(AVFrame *frame)
     {

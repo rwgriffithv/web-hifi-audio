@@ -22,7 +22,7 @@ namespace
     constexpr uint16_t __WAVFMT_PCM = 0x0001;
     /// @brief wave chunk format tag for float data
     constexpr uint16_t __WAVFMT_FLT = 0x0003;
-    /// @brief number of supported ffmpeg formats
+    /// @brief number of supported libav formats
     constexpr size_t __NUM_AVFMTS = 10;
 
     /// @brief array type for asoundlib format mapping
@@ -33,7 +33,7 @@ namespace
     /**
      * @brief compile time construction of sample format type map
      *
-     * ffmpeg format -> asoundlib format (24 bit needs help)
+     * libav format -> asoundlib format (24 bit needs help)
      */
     constexpr SndFormatMap constSampleFormatMap()
     {
@@ -60,7 +60,7 @@ namespace
     /**
      * @brief compile time construction of wav format type map
      *
-     * ffmpeg format -> wav chunk format tag
+     * libav format -> wav chunk format tag
      */
     constexpr WavFormatMap constWavFormatMap()
     {
@@ -84,9 +84,9 @@ namespace
         return map;
     }
 
-    /// @brief ffmpeg format -> asoundlib format
+    /// @brief libav format -> asoundlib format
     constexpr const SndFormatMap __SNDFMT_MAP = constSampleFormatMap();
-    /// @brief ffmpeg format -> wav chunk format tag
+    /// @brief libav format -> wav chunk format tag
     constexpr const WavFormatMap __WAVFMT_MAP = constWavFormatMap();
 
     /**
@@ -306,7 +306,7 @@ namespace
      * @brief write device using interleaved full samples (bitdepth == primitive bitwidth)
      *
      * @param handle asoundlib pcm device handle
-     * @param frame ffmpeg frame to write
+     * @param frame libav frame to write
      * @param spec context stream specification
      * @param pbuf allocated void* buffer to use for accessing planar data (unused)
      * @return 0 if successful, error code otherwise
@@ -336,7 +336,7 @@ namespace
      * @brief write device using planar full samples (bitdepth == primitive bitwidth)
      *
      * @param handle asoundlib pcm device handle
-     * @param frame ffmpeg frame to write
+     * @param frame libav frame to write
      * @param spec context stream specification
      * @param pbuf allocated void* buffer to use for accessing planar data
      * @return 0 if successful, error code otherwise
@@ -369,7 +369,7 @@ namespace
      * @brief write device using interleaved sub-samples (bitdepth <= primitive bitwidth)
      *
      * @param handle asoundlib pcm device handle
-     * @param frame ffmpeg frame to write
+     * @param frame libav frame to write
      * @param spec context stream specification
      * @param pbuf allocated void* buffer to use for accessing planar data (unused)
      * @return 0 if successful, error code otherwise
@@ -399,7 +399,7 @@ namespace
      * @brief write device using planar sub-samples (bitdepth <= primitive bitwidth)
      *
      * @param handle asoundlib pcm device handle
-     * @param frame ffmpeg frame to write
+     * @param frame libav frame to write
      * @param spec context stream specification
      * @param pbuf allocated void* buffer to use for accessing planar data
      * @return 0 if successful, error code otherwise
@@ -432,7 +432,7 @@ namespace
      * @brief write file using planar sub-samples (bitdepth <= primitive bitwidth)
      *
      * @param ofs output file stream
-     * @param frame ffmpeg frame to write
+     * @param frame libav frame to write
      * @param spec context stream specification
      * @param pbuf allocated void* buffer to use for accessing planar data
      * @return 0 if successful, error code otherwise
@@ -449,7 +449,7 @@ namespace
      * @brief write file using planar sub-samples (bitdepth <= primitive bitwidth)
      *
      * @param ofs output file stream
-     * @param frame ffmpeg frame to write
+     * @param frame libav frame to write
      * @param spec context stream specification
      * @param pbuf allocated void* buffer to use for accessing planar data
      * @return 0 if successful, error code otherwise
@@ -472,7 +472,7 @@ namespace
      * @brief write file using planar sub-samples (bitdepth <= primitive bitwidth)
      *
      * @param ofs output file stream
-     * @param frame ffmpeg frame to write
+     * @param frame libav frame to write
      * @param spec context stream specification
      * @param pbuf allocated void* buffer to use for accessing planar data
      * @return 0 if successful, error code otherwise
@@ -494,7 +494,7 @@ namespace
      * @brief write file using planar sub-samples (bitdepth <= primitive bitwidth)
      *
      * @param ofs output file stream
-     * @param frame ffmpeg frame to write
+     * @param frame libav frame to write
      * @param spec context stream specification
      * @param pbuf allocated void* buffer to use for accessing planar data
      * @return 0 if successful, error code otherwise
