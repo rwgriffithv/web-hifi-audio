@@ -1,3 +1,5 @@
 .vscode/
-.depend
+*.depend
 *.o
+*.a
+*.*~
