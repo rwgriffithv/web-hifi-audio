@@ -6,7 +6,7 @@
  * @todo use map (array) of function pointers to handle writing different formats
  * @todo map indexed by spec.format
  */
-#include "writer.h"
+#include "pcm/writer.h"
 
 #include <array>
 
@@ -24,6 +24,8 @@ namespace
     constexpr uint16_t __WAVFMT_FLT = 0x0003;
     /// @brief number of supported libav formats
     constexpr size_t __NUM_AVFMTS = 10;
+
+    using WPCStreamSpec = whfa::pcm::Context::StreamSpec;
 
     /// @brief array type for asoundlib format mapping
     using SndFormatMap = std::array<snd_pcm_format_t, __NUM_AVFMTS>;
@@ -141,7 +143,7 @@ namespace
      * @param spec context stream specification
      * @return 0 if successful, error code otherwise
      */
-    int open_dev(snd_pcm_t *&handle, const char *name, const whfa::Context::StreamSpec &spec)
+    int open_dev(snd_pcm_t *&handle, const char *name, const WPCStreamSpec &spec)
     {
         int rv;
         if ((rv = snd_pcm_open(&handle, name, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
@@ -189,7 +191,7 @@ namespace
      * @param spec context stream specification
      * @return 0 if successful, error coder otherwise
      */
-    int open_file_raw(std::ofstream &ofs, const char *name, const whfa::Context::StreamSpec &spec)
+    int open_file_raw(std::ofstream &ofs, const char *name, const WPCStreamSpec &spec)
     {
         std::string name_md(name);
         name_md.append(__METADATA_SFX);
@@ -220,7 +222,7 @@ namespace
      * @param spec context stream specification
      * @return 0 if successful, error coder otherwise
      */
-    int open_file_wav(std::ofstream &ofs, const char *name, const whfa::Context::StreamSpec &spec)
+    int open_file_wav(std::ofstream &ofs, const char *name, const WPCStreamSpec &spec)
     {
         ofs.open(name, std::ios::out | std::ios::binary);
         if (!ofs)
@@ -311,7 +313,7 @@ namespace
      * @param pbuf allocated void* buffer to use for accessing planar data (unused)
      * @return 0 if successful, error code otherwise
      */
-    int write_dev_fs(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec, [[maybe_unused]] void **pbuf)
+    int write_dev_fs(snd_pcm_t *handle, const AVFrame &frame, const WPCStreamSpec &spec, [[maybe_unused]] void **pbuf)
     {
         const int ssz = spec.bitdepth >> 3;
         int cnt = 0;
@@ -341,7 +343,7 @@ namespace
      * @param pbuf allocated void* buffer to use for accessing planar data
      * @return 0 if successful, error code otherwise
      */
-    int write_dev_fs_p(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec, void **pbuf)
+    int write_dev_fs_p(snd_pcm_t *handle, const AVFrame &frame, const WPCStreamSpec &spec, void **pbuf)
     {
         const int ssz = spec.bitdepth >> 3;
         int cnt = 0;
@@ -374,7 +376,7 @@ namespace
      * @param pbuf allocated void* buffer to use for accessing planar data (unused)
      * @return 0 if successful, error code otherwise
      */
-    int write_dev_ss(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec, [[maybe_unused]] void **pbuf)
+    int write_dev_ss(snd_pcm_t *handle, const AVFrame &frame, const WPCStreamSpec &spec, [[maybe_unused]] void **pbuf)
     {
         const int ssz = av_get_bytes_per_sample(spec.format);
         int cnt = 0;
@@ -404,7 +406,7 @@ namespace
      * @param pbuf allocated void* buffer to use for accessing planar data
      * @return 0 if successful, error code otherwise
      */
-    int write_dev_ss_p(snd_pcm_t *handle, const AVFrame &frame, const whfa::Context::StreamSpec &spec, void **pbuf)
+    int write_dev_ss_p(snd_pcm_t *handle, const AVFrame &frame, const WPCStreamSpec &spec, void **pbuf)
     {
         const int ssz = av_get_bytes_per_sample(spec.format);
         int cnt = 0;
@@ -437,7 +439,7 @@ namespace
      * @param pbuf allocated void* buffer to use for accessing planar data
      * @return 0 if successful, error code otherwise
      */
-    int write_file_fs(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    int write_file_fs(std::ofstream &ofs, const AVFrame &frame, const WPCStreamSpec &spec)
     {
         const std::streamsize ssz = spec.bitdepth >> 3;
         const std::streamsize framesz = ssz * frame.nb_samples * frame.channels;
@@ -454,7 +456,7 @@ namespace
      * @param pbuf allocated void* buffer to use for accessing planar data
      * @return 0 if successful, error code otherwise
      */
-    int write_file_fs_p(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    int write_file_fs_p(std::ofstream &ofs, const AVFrame &frame, const WPCStreamSpec &spec)
     {
         const int ssz = spec.bitdepth >> 3;
         const int planesz = ssz * frame.nb_samples;
@@ -477,7 +479,7 @@ namespace
      * @param pbuf allocated void* buffer to use for accessing planar data
      * @return 0 if successful, error code otherwise
      */
-    int write_file_ss(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    int write_file_ss(std::ofstream &ofs, const AVFrame &frame, const WPCStreamSpec &spec)
     {
         const int ssz = av_get_bytes_per_sample(spec.format);
         const int planesz = ssz * frame.nb_samples;
@@ -499,7 +501,7 @@ namespace
      * @param pbuf allocated void* buffer to use for accessing planar data
      * @return 0 if successful, error code otherwise
      */
-    int write_file_ss_p(std::ofstream &ofs, const AVFrame &frame, const whfa::Context::StreamSpec &spec)
+    int write_file_ss_p(std::ofstream &ofs, const AVFrame &frame, const WPCStreamSpec &spec)
     {
         const int ssz = av_get_bytes_per_sample(spec.format);
         const int planesz = ssz * frame.nb_samples;
@@ -521,7 +523,7 @@ namespace
      * @param[out] pbuf planar data buffer, allocated if needed
      * @return device writer, nullptr on invalid/unsupported spec
      */
-    whfa::Writer::DeviceWriter get_dev_writer(const whfa::Context::StreamSpec &spec, void **&pbuf)
+    whfa::pcm::Writer::DeviceWriter get_dev_writer(const WPCStreamSpec &spec, void **&pbuf)
     {
         if (pbuf != nullptr)
         {
@@ -546,7 +548,7 @@ namespace
      * @param spec stream specification
      * @return file writer, nullptr on invalid/unsupported spec
      */
-    whfa::Writer::FileWriter get_file_writer(const whfa::Context::StreamSpec &spec)
+    whfa::pcm::Writer::FileWriter get_file_writer(const WPCStreamSpec &spec)
     {
         const bool planar = av_sample_fmt_is_planar(spec.format) == 1;
         const int bw = av_get_bytes_per_sample(spec.format) << 3;
@@ -559,153 +561,158 @@ namespace
     }
 }
 
-/**
- * whfa::Writer public methods
- */
-
-whfa::Writer::Writer(whfa::Context &context)
-    : Worker(context),
-      _mode(OutputType::DEVICE),
-      _dev(nullptr),
-      _pbuf(nullptr),
-      _dev_wfn(nullptr),
-      _file_wfn(nullptr)
+namespace whfa::pcm
 {
-}
 
-whfa::Writer::~Writer()
-{
-    close();
-}
+    /**
+     * whfa::pcm::Writer public methods
+     */
 
-bool whfa::Writer::open(const char *name, OutputType mode)
-{
-    std::lock_guard<std::mutex> lk(_mtx);
-    close_unsafe();
-
-    _mode = mode;
-
-    if (!_ctxt->get_stream_spec(_spec))
+    Writer::Writer(Context &context)
+        : Worker(context),
+          _mode(OutputType::DEVICE),
+          _dev(nullptr),
+          _pbuf(nullptr),
+          _dev_wfn(nullptr),
+          _file_wfn(nullptr)
     {
-        set_state_stop(Worker::FORMATINVAL | Worker::CODECINVAL);
     }
 
-    int rv = 0;
-    switch (_mode)
+    Writer::~Writer()
     {
-    case DEVICE:
-        rv = open_dev(_dev, name, _spec);
-        _dev_wfn = get_dev_writer(_spec, _pbuf);
-    case FILE_RAW:
-        rv = open_file_raw(_ofs, name, _spec);
-        _file_wfn = get_file_writer(_spec);
-        break;
-    case FILE_WAV:
-        rv = open_file_wav(_ofs, name, _spec);
-        _file_wfn = get_file_writer(_spec);
-        break;
+        close();
     }
-    if (rv != 0)
+
+    bool Writer::open(const char *name, OutputType mode)
     {
-        set_state_stop(rv);
+        std::lock_guard<std::mutex> lk(_mtx);
         close_unsafe();
-        return false;
-    }
-    return true;
-}
 
-bool whfa::Writer::close()
-{
-    std::lock_guard<std::mutex> lk(_mtx);
-    return close_unsafe();
-}
+        _mode = mode;
 
-/**
- * whfa::Writer protected methods
- */
-
-void whfa::Writer::execute_loop_body()
-{
-    switch (_mode)
-    {
-    case DEVICE:
-        if (_dev == nullptr)
+        if (!_ctxt->get_stream_spec(_spec))
         {
-            set_state_stop();
-            return;
+            set_state_stop(Worker::FORMATINVAL | Worker::CODECINVAL);
         }
-        // snd_pcm_writei
-        break;
-    case FILE_RAW:
-    case FILE_WAV:
-        if (!_ofs.is_open())
-        {
-            set_state_stop();
-            return;
-        }
-        else if (!_ofs)
-        {
-            set_state_pause(_ofs.rdstate());
-            return;
-        }
-        // both are now writing interleaved binary samples
-        break;
-    }
 
-    AVFrame *frame;
-    if (!_ctxt->get_frame_queue().pop(frame))
-    {
-        // due to flush, not an error state
-        return;
-    }
-    if (frame == nullptr)
-    {
-        // EOF, stop and close (no queue to forward to)
-        set_state_stop();
-        close_unsafe();
-        return;
-    }
-
-    int rv;
-    switch (_mode)
-    {
-    case DEVICE:
-        rv = _dev_wfn(_dev, *frame, _spec, _pbuf);
-        break;
-    case FILE_RAW:
-    case FILE_WAV:
-        rv = _file_wfn(_ofs, *frame, _spec);
-        break;
-    }
-    set_state_timestamp(frame->pts);
-    av_frame_free(&frame);
-    if (rv != 0)
-    {
-        set_state_pause(rv);
-    }
-}
-
-bool whfa::Writer::close_unsafe()
-{
-    if (_dev != nullptr)
-    {
         int rv = 0;
-        rv |= snd_pcm_drain(_dev);
-        rv |= snd_pcm_close(_dev);
-        if (rv < 0)
+        switch (_mode)
+        {
+        case DEVICE:
+            rv = open_dev(_dev, name, _spec);
+            _dev_wfn = get_dev_writer(_spec, _pbuf);
+        case FILE_RAW:
+            rv = open_file_raw(_ofs, name, _spec);
+            _file_wfn = get_file_writer(_spec);
+            break;
+        case FILE_WAV:
+            rv = open_file_wav(_ofs, name, _spec);
+            _file_wfn = get_file_writer(_spec);
+            break;
+        }
+        if (rv != 0)
+        {
+            set_state_stop(rv);
+            close_unsafe();
+            return false;
+        }
+        return true;
+    }
+
+    bool Writer::close()
+    {
+        std::lock_guard<std::mutex> lk(_mtx);
+        return close_unsafe();
+    }
+
+    /**
+     * whfa::pcm::Writer protected methods
+     */
+
+    void Writer::execute_loop_body()
+    {
+        switch (_mode)
+        {
+        case DEVICE:
+            if (_dev == nullptr)
+            {
+                set_state_stop();
+                return;
+            }
+            // snd_pcm_writei
+            break;
+        case FILE_RAW:
+        case FILE_WAV:
+            if (!_ofs.is_open())
+            {
+                set_state_stop();
+                return;
+            }
+            else if (!_ofs)
+            {
+                set_state_pause(_ofs.rdstate());
+                return;
+            }
+            // both are now writing interleaved binary samples
+            break;
+        }
+
+        AVFrame *frame;
+        if (!_ctxt->get_frame_queue().pop(frame))
+        {
+            // due to flush, not an error state
+            return;
+        }
+        if (frame == nullptr)
+        {
+            // EOF, stop and close (no queue to forward to)
+            set_state_stop();
+            close_unsafe();
+            return;
+        }
+
+        int rv;
+        switch (_mode)
+        {
+        case DEVICE:
+            rv = _dev_wfn(_dev, *frame, _spec, _pbuf);
+            break;
+        case FILE_RAW:
+        case FILE_WAV:
+            rv = _file_wfn(_ofs, *frame, _spec);
+            break;
+        }
+        set_state_timestamp(frame->pts);
+        av_frame_free(&frame);
+        if (rv != 0)
         {
             set_state_pause(rv);
         }
     }
-    if (_ofs.is_open())
+
+    bool Writer::close_unsafe()
     {
-        _ofs.close();
+        if (_dev != nullptr)
+        {
+            int rv = 0;
+            rv |= snd_pcm_drain(_dev);
+            rv |= snd_pcm_close(_dev);
+            if (rv < 0)
+            {
+                set_state_pause(rv);
+            }
+        }
+        if (_ofs.is_open())
+        {
+            _ofs.close();
+        }
+        if (_pbuf != nullptr)
+        {
+            delete _pbuf;
+        }
+        _dev_wfn = nullptr;
+        _file_wfn = nullptr;
+        return false;
     }
-    if (_pbuf != nullptr)
-    {
-        delete _pbuf;
-    }
-    _dev_wfn = nullptr;
-    _file_wfn = nullptr;
-    return false;
+
 }

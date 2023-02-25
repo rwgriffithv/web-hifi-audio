@@ -4,19 +4,19 @@
  */
 #pragma once
 
-#include "../util/dbpqueue.h"
-#include "../util/threader.h"
+#include "util/dbpqueue.h"
+#include "util/threader.h"
 
 extern "C"
 {
 #include <libavformat/avformat.h>
 }
 
-namespace whfa
+namespace whfa::pcm
 {
 
     /**
-     * @class whfa::Context
+     * @class whfa::pcm::Context
      * @brief threadsafe class for synchronized shared context of one audio stream
      *
      * provides synchronized access to libav audio context objects and packet and frame queues
@@ -26,7 +26,7 @@ namespace whfa
     {
     public:
         /**
-         * @class whfa::Context::Worker
+         * @class whfa::pcm::Context::Worker
          * @brief simple base Threader class for working with Context
          */
         class Worker : public util::Threader
@@ -49,7 +49,7 @@ namespace whfa
         };
 
         /**
-         * @struct whfa::Context::StreamSpec
+         * @struct whfa::pcm::Context::StreamSpec
          * @brief struct for holding stream information
          *
          * bit-width = size of container for each sample

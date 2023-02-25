@@ -4,13 +4,13 @@
 */
 #pragma once
 
-#include "context.h"
+#include "pcm/context.h"
 
-namespace whfa
+namespace whfa::pcm
 {
 
     /**
-     * @class whfa::Reader
+     * @class whfa::pcm::Reader
      * @brief class for parallel reading of packets from an audio stream into a queue
      *
      * context worker class to abstract reading packets using libav and seeking to new positions

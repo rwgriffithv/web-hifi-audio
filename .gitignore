@@ -1,4 +1,6 @@
 .vscode/
+bin/
+lib/
 *.depend
 *.o
 *.a

@@ -7,10 +7,11 @@ all "libav" references refer to the FFmpeg library system libav
 
 near-term todo:
 
+- better build scripts so subdirectories become libraries
 - web API for local file support
 - libav networked stream handling
 - web API for remote file support
-- better build scripts so subdirectories become libraries
+- Kotlin Android application to serve or select files w/ playback control
 
 needs test:
 

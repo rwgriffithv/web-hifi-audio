@@ -4,13 +4,13 @@
  */
 #pragma once
 
-#include "context.h"
+#include "pcm/context.h"
 
-namespace whfa
+namespace whfa::pcm
 {
 
     /**
-     * @class whfa::Decoder
+     * @class whfa::pcm::Decoder
      * @brief class for parallel decoding of packets from queue into a frame queue
      *
      * context worker class to abstract decoding packets using libav

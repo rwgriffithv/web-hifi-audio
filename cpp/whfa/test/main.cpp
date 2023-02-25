@@ -2,17 +2,20 @@
  * @file main.cpp
  * @author Robert Griffith
  *
- * @todo implement cli and test methods
+ * @todo more tests as methods
  * @todo building on WSL still has linking errors, makefile was hacked together to just find compile-time errors better
  */
-#include "whfa/decoder.h"
-#include "whfa/reader.h"
-#include "whfa/writer.h"
+#include "pcm/decoder.h"
+#include "pcm/reader.h"
+#include "pcm/writer.h"
 
 #include <condition_variable>
 #include <iostream>
 #include <fstream>
 #include <mutex>
+
+namespace wp = whfa::pcm;
+namespace wu = whfa::util;
 
 namespace
 {
@@ -26,7 +29,7 @@ namespace
     constexpr const char *__OUTRAW = "out.raw";
 
     char __errbuf[__ERRBUFSZ];
-    whfa::Context *__ctxt;
+    wp::Context *__ctxt;
     std::mutex __mtx;
     std::condition_variable __cond;
 
@@ -39,12 +42,12 @@ namespace
         std::cerr << "AVERROR (" << averror << ") : " << __errbuf << std::endl;
     }
 
-    void set_context(whfa::Context &c)
+    void set_context(wp::Context &c)
     {
         __ctxt = &c;
     }
 
-    void state_cb(const util::Threader::State &s, const char *str)
+    void state_cb(const wu::Threader::State &s, const char *str)
     {
         if (s.error != 0)
         {
@@ -58,17 +61,17 @@ namespace
         }
     }
 
-    void state_cb_r(const util::Threader::State &s)
+    void state_cb_r(const wu::Threader::State &s)
     {
         state_cb(s, "Reader");
     }
 
-    void state_cb_d(const util::Threader::State &s)
+    void state_cb_d(const wu::Threader::State &s)
     {
         state_cb(s, "Decoder");
     }
 
-    void state_cb_w(const util::Threader::State &s)
+    void state_cb_w(const wu::Threader::State &s)
     {
         state_cb(s, "Writer");
         if (!s.run)
@@ -85,19 +88,19 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    whfa::Context c(__CAP_QUEUE_F, __CAP_QUEUE_P);
+    wp::Context c(__CAP_QUEUE_F, __CAP_QUEUE_P);
     set_context(c);
-    
-    whfa::Reader r(c);
-    whfa::Decoder d(c);
-    whfa::Writer w(c);
-    
-    util::Threader::State state;
+
+    wp::Reader r(c);
+    wp::Decoder d(c);
+    wp::Writer w(c);
+
+    wu::Threader::State state;
     int rv;
 
     std::cout << "initializing libav formats & networking" << std::endl;
-    whfa::Context::register_formats();
-    whfa::Context::enable_networking();
+    wp::Context::register_formats();
+    wp::Context::enable_networking();
 
     std::cout << "openining " << argv[1] << std::endl;
 
@@ -109,14 +112,13 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (!w.open(__OUTWAV, whfa::Writer::OutputType::FILE_RAW))
+    if (!w.open(__OUTWAV, wp::Writer::OutputType::FILE_RAW))
     {
         std::cerr << "failed to open output" << std::endl;
         w.get_state(state);
         print_error(state.error);
         return 1;
     }
-
 
     w.start(state_cb_w);
     d.start(state_cb_d);

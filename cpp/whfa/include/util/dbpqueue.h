@@ -8,11 +8,11 @@
 #include <condition_variable>
 #include <mutex>
 
-namespace util
+namespace whfa::util
 {
 
     /**
-     * @class util::DBPQueue<T>
+     * @class whfa::util::DBPQueue<T>
      * @brief threadsafe dual-blocking pointer queue of fixed capacity
      *
      * only stores pointers T*
@@ -27,19 +27,38 @@ namespace util
     public:
         /// @brief callback type to be invoked when flushing
         using FlushCallback = void (*)(T *);
-        
+
         /**
          * @brief constructor
          *
          * @param capacity the ideal target capacity
          * @param callback default callback to invoke when flushing
          */
-        DBPQueue(size_t capacity, FlushCallback callback = nullptr);
+        DBPQueue(size_t capacity, FlushCallback callback = nullptr)
+            : _capacity(capacity),
+              _callback(callback),
+              _pop_buf({.buf = new T *[capacity],
+                        .pos = 0,
+                        .sz = 0}),
+              _pop_st({.flush = false,
+                       .num_wait = 0}),
+              _push_buf({.buf = new T *[capacity],
+                         .pos = 0,
+                         .sz = 0}),
+              _push_st({.flush = false,
+                        .num_wait = 0})
+        {
+        }
 
         /**
          * @brief destructor
          */
-        ~DBPQueue();
+        ~DBPQueue()
+        {
+            flush();
+            delete _push_buf.buf;
+            delete _pop_buf.buf;
+        }
 
         /**
          * @brief clear queue and handle invoked on each popped element
@@ -51,7 +70,40 @@ namespace util
          *
          * @param callback function to invoked on popped pointers, nullptr = use default
          */
-        void flush(FlushCallback callback = nullptr);
+        void flush(FlushCallback callback = nullptr)
+        {
+            FlushCallback cb = (callback == nullptr) ? _callback : callback;
+
+            {
+                std::lock_guard<std::mutex> lk(_pop_mtx);
+                _pop_st.flush = true;
+                if (cb != nullptr)
+                {
+                    while (_pop_buf.pos != _pop_buf.sz)
+                    {
+                        cb(_pop_buf.buf[_pop_buf.pos++]);
+                    }
+                }
+                _pop_buf.pos = 0;
+                _pop_buf.sz = 0;
+            }
+            _pop_cond.notify_all();
+
+            {
+                std::lock_guard<std::mutex> lk(_push_mtx);
+                _push_st.flush = true;
+                if (cb != nullptr)
+                {
+                    size_t i = 0;
+                    while (i != _push_buf.sz)
+                    {
+                        cb(_push_buf.buf[i++]);
+                    }
+                }
+                _push_buf.sz = 0;
+            }
+            _push_cond.notify_all();
+        }
 
         /**
          * @brief remove and retrieve first element in queue
@@ -59,7 +111,41 @@ namespace util
          * @param[out] value moved from front of queue
          * @return true if successful, false if flushing or flushed while waiting
          */
-        bool pop(T *&ptr);
+        bool pop(T *&ptr)
+        {
+            bool rv = false;
+            std::unique_lock<std::mutex> pop_lk(_pop_mtx);
+            while (!_pop_st.flush && _pop_buf.sz == 0)
+            {
+                bool refilled;
+                {
+                    std::lock_guard<std::mutex> push_lk(_push_mtx);
+                    refilled = fill_pop_buffer();
+                }
+                if (refilled)
+                {
+                    _push_cond.notify_all();
+                }
+                else
+                {
+                    _pop_st.num_wait++;
+                    _pop_cond.wait(pop_lk);
+                    _pop_st.num_wait--;
+                }
+            }
+            if (_pop_st.flush)
+            {
+                _pop_st.flush = _pop_st.num_wait != 0;
+            }
+            else
+            {
+                ptr = _pop_buf.buf[_pop_buf.pos++];
+                _pop_buf.sz--;
+                rv = true;
+            }
+            pop_lk.unlock();
+            return rv;
+        }
 
         /**
          * @brief remove and retrieve first element in queue within a timeout period
@@ -69,7 +155,45 @@ namespace util
          * @return true if successful, false if flushed or timeout reached
          */
         template <typename Rep, typename Period>
-        bool pop(T *&ptr, const std::chrono::duration<Rep, Period> &timeout);
+        bool pop(T *&ptr, const std::chrono::duration<Rep, Period> &timeout)
+        {
+            bool rv = false;
+            std::unique_lock<std::mutex> pop_lk(_pop_mtx);
+            while (!_pop_st.flush && _pop_buf.sz == 0)
+            {
+                bool refilled;
+                {
+                    std::lock_guard<std::mutex> push_lk(_push_mtx);
+                    refilled = fill_pop_buffer();
+                }
+                if (refilled)
+                {
+                    _push_cond.notify_all();
+                }
+                else
+                {
+                    _pop_st.num_wait++;
+                    const std::cv_status cvs = _pop_cond.wait_for(pop_lk, timeout);
+                    _pop_st.num_wait--;
+                    if (cvs == std::cv_status::timeout)
+                    {
+                        return false;
+                    }
+                }
+            }
+            if (_pop_st.flush)
+            {
+                _pop_st.flush = _pop_st.num_wait != 0;
+            }
+            else
+            {
+                ptr = _pop_buf.buf[_pop_buf.pos++];
+                _pop_buf.sz--;
+                rv = true;
+            }
+            pop_lk.unlock();
+            return rv;
+        }
 
         /**
          * @brief insert element into back of queue
@@ -77,7 +201,29 @@ namespace util
          * @param ptr pointer to copy to queue
          * @return true if successful, false if flushing or flushed while waiting
          */
-        bool push(const T *ptr);
+        bool push(T *ptr)
+        {
+            bool rv = false;
+            std::unique_lock<std::mutex> push_lk(_push_mtx);
+            while (!_push_st.flush && _push_buf.sz == _capacity)
+            {
+                _push_st.num_wait++;
+                _push_cond.wait(push_lk);
+                _push_st.num_wait--;
+            }
+            if (_push_st.flush)
+            {
+                _push_st.flush = _push_st.num_wait != 0;
+            }
+            else
+            {
+                _push_buf.buf[_push_buf.sz++] = ptr;
+                rv = true;
+            }
+            push_lk.unlock();
+            _pop_cond.notify_all();
+            return rv;
+        }
 
         /**
          * @brief insert element into back of queue within a timeout period
@@ -87,7 +233,33 @@ namespace util
          * @return true if successful, false if flushed or timeout reached
          */
         template <typename Rep, typename Period>
-        bool push(const T *ptr, const std::chrono::duration<Rep, Period> &timeout);
+        bool push(T *ptr, const std::chrono::duration<Rep, Period> &timeout)
+        {
+            bool rv = false;
+            std::unique_lock<std::mutex> push_lk(_push_mtx);
+            while (!_push_st.flush && _push_buf.sz == _capacity)
+            {
+                _push_st.num_wait++;
+                const std::cv_status cvs = _push_cond.wait_for(push_lk, timeout);
+                _push_st.num_wait--;
+                if (cvs == std::cv_status::timeout)
+                {
+                    return false;
+                }
+            }
+            if (_push_st.flush)
+            {
+                _push_st.flush = _push_st.num_wait != 0;
+            }
+            else
+            {
+                _push_buf.buf[_push_buf.sz++] = ptr;
+                rv = true;
+            }
+            push_lk.unlock();
+            _pop_cond.notify_all();
+            return rv;
+        }
 
         /**
          * @brief get ideal capacity of queue specified from constructor
@@ -96,18 +268,26 @@ namespace util
          *
          * @return capacity of queue
          */
-        const size_t get_capacity();
+        const size_t get_capacity()
+        {
+            return _capacity;
+        }
 
         /**
          * @brief get number of items in queue
          *
          * @return number of items in queue
          */
-        const size_t get_size();
+        const size_t get_size()
+        {
+            std::lock_guard<std::mutex> pop_lk(_pop_mtx);
+            std::lock_guard<std::mutex> push_lk(_push_mtx);
+            return _pop_buf.sz + _push_buf.sz;
+        }
 
     protected:
         /**
-         * @struct util::DBPQueue<T>::Buffer
+         * @struct whfa::util::DBPQueue<T>::Buffer
          * @brief struct for holding backing buffer data
          */
         struct BufferData
@@ -121,7 +301,7 @@ namespace util
         };
 
         /**
-         * @struct util::DBPQueue<T>::State
+         * @struct whfa::util::DBPQueue<T>::State
          * @brief struct for holding backing buffer state
          */
         struct BufferState
@@ -139,7 +319,18 @@ namespace util
          *
          * @return true if buffers swapped, false if push buffer was empty
          */
-        bool fill_pop_buffer();
+        bool fill_pop_buffer()
+        {
+            if (_push_buf.sz == 0)
+            {
+                return false;
+            }
+            T **b = _pop_buf.buf;
+            _pop_buf = _push_buf;
+            _push_buf.buf = b;
+            _push_buf.sz = 0;
+            return true;
+        }
 
         /// @brief capacity of each underlying buffer
         size_t _capacity;

@@ -8,7 +8,7 @@
 #include <mutex>
 #include <thread>
 
-namespace util
+namespace whfa::util
 {
 
     /**
