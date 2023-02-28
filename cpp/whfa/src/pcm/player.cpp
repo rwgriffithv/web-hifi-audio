@@ -10,7 +10,7 @@
 
 namespace
 {
-    /// @brief 1 = ALSA soft resampling, 0 = no resampling
+    /// @brief 1 = libasound soft resampling, 0 = no resampling
     constexpr int __RESAMPLE = 0;
     /// @brief latency in device
     constexpr unsigned int __LATENCY_US = 500000;

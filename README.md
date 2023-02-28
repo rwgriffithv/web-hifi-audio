@@ -24,4 +24,4 @@ dependencies:
 
 - libavformat : file and stream parsing
 - libavcodec : file and stream decoding
-- asoundlib : sound card interfacing
+- libasound : sound card interfacing
