@@ -95,24 +95,12 @@ namespace whfa::util
         void set_state_start();
 
         /**
-         * @brief not threadsafe implementation of stop()
-         * @see Threader::stop()
-         */
-        void set_state_stop();
-
-        /**
          * @brief not threadsafe implementation of stop() while setting error
          * @see Threader::stop()
          *
          * @param error error value to set
          */
-        void set_state_stop(int error);
-
-        /**
-         * @brief not threadsafe implementation of pause()
-         * @see Threader::pause()
-         */
-        void set_state_pause();
+        void set_state_stop(int error = 0);
 
         /**
          * @brief not threadsafe implementation of pause() while setting error
@@ -120,7 +108,7 @@ namespace whfa::util
          *
          * @param error error value to set
          */
-        void set_state_pause(int error);
+        void set_state_pause(int error = 0);
 
         /**
          * @brief not threadsafe method to set state error

@@ -6,6 +6,7 @@
  * @todo building on WSL still has linking errors, makefile was hacked together to just find compile-time errors better
  */
 #include "pcm/decoder.h"
+#include "pcm/player.h"
 #include "pcm/reader.h"
 #include "pcm/writer.h"
 
@@ -27,6 +28,8 @@ namespace
     constexpr const char *__OUTDEV = "default";
     constexpr const char *__OUTWAV = "out.wav";
     constexpr const char *__OUTRAW = "out.raw";
+
+    constexpr const bool __PLAY = false;
 
     char __errbuf[__ERRBUFSZ];
     wp::Context *__ctxt;
@@ -79,6 +82,15 @@ namespace
             __cond.notify_one();
         }
     }
+
+    void state_cb_p(const wu::Threader::State &s)
+    {
+        state_cb(s, "Player");
+        if (!s.run)
+        {
+            __cond.notify_one();
+        }
+    }
 }
 
 int main(int argc, char **argv)
@@ -93,6 +105,7 @@ int main(int argc, char **argv)
 
     wp::Reader r(c);
     wp::Decoder d(c);
+    wp::Player p(c);
     wp::Writer w(c);
 
     wu::Threader::State state;
@@ -112,15 +125,30 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (!w.open(__OUTWAV, wp::Writer::OutputType::FILE_RAW))
+    if (__PLAY)
     {
-        std::cerr << "failed to open output" << std::endl;
-        w.get_state(state);
-        print_error(state.error);
-        return 1;
+        if (!p.open(__OUTDEV))
+        {
+            std::cerr << "failed to open device output" << std::endl;
+            p.get_state(state);
+            print_error(state.error);
+            return 1;
+        }
+        p.configure();
+        p.start(state_cb_p);
+    }
+    else
+    {
+        if (!w.open(__OUTWAV, wp::Writer::OutputType::FILE_RAW))
+        {
+            std::cerr << "failed to open file output" << std::endl;
+            w.get_state(state);
+            print_error(state.error);
+            return 1;
+        }
+        w.start(state_cb_w);
     }
 
-    w.start(state_cb_w);
     d.start(state_cb_d);
     r.start(state_cb_r);
 
@@ -130,7 +158,7 @@ int main(int argc, char **argv)
     std::cout << "DONE: no longer waiting" << std::endl;
 
     // all threaders join threads in destructor
-    // context and writer both close in destructor
+    // context, player, and writer both close in destructor
 
     return 0;
 }

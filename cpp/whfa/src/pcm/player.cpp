@@ -1,0 +1,417 @@
+/**
+ * @file player.cpp
+ * @author Robert Griffith
+ *
+ * @todo consider exposing device resampling and latency in public methods
+ */
+#include "pcm/player.h"
+
+#include <array>
+
+namespace
+{
+    /// @brief 1 = ALSA soft resampling, 0 = no resampling
+    constexpr int __RESAMPLE = 0;
+    /// @brief latency in device
+    constexpr unsigned int __LATENCY_US = 500000;
+    /// @brief number of libav formats supported for playback
+    constexpr size_t __NUM_AVFMTS = 10;
+
+    /// @brief convience alias for stream spec
+    using WPCStreamSpec = whfa::pcm::Context::StreamSpec;
+    /// @brief convience alias for device writer
+    using WPPDeviceWriter = whfa::pcm::Player::DeviceWriter;
+    /// @brief array type for libasound format mapping
+    using SndFormatMap = std::array<snd_pcm_format_t, __NUM_AVFMTS>;
+
+    /**
+     * @brief compile time construction of sample format type map
+     *
+     * libav format -> libasound format (24 bit needs help)
+     */
+    constexpr SndFormatMap constSampleFormatMap()
+    {
+        SndFormatMap map = {SND_PCM_FORMAT_UNKNOWN};
+        // 8 bit
+        map[AV_SAMPLE_FMT_U8] = SND_PCM_FORMAT_U8;
+        map[AV_SAMPLE_FMT_U8P] = SND_PCM_FORMAT_U8;
+        // 16 bit
+        map[AV_SAMPLE_FMT_S16] = SND_PCM_FORMAT_S16;
+        map[AV_SAMPLE_FMT_S16P] = SND_PCM_FORMAT_S16;
+        // 24 or 32 bit
+        map[AV_SAMPLE_FMT_S32] = SND_PCM_FORMAT_S32;
+        map[AV_SAMPLE_FMT_S32P] = SND_PCM_FORMAT_S32;
+        // float
+        map[AV_SAMPLE_FMT_FLT] = SND_PCM_FORMAT_FLOAT;
+        map[AV_SAMPLE_FMT_FLTP] = SND_PCM_FORMAT_FLOAT;
+        // double
+        map[AV_SAMPLE_FMT_DBL] = SND_PCM_FORMAT_FLOAT64;
+        map[AV_SAMPLE_FMT_DBLP] = SND_PCM_FORMAT_FLOAT64;
+        // 64 bit not supported
+        return map;
+    }
+
+    /// @brief libav format -> libasound format
+    constexpr const SndFormatMap __SNDFMT_MAP = constSampleFormatMap();
+
+    /**
+     * @class WPPDeviceWriterP
+     * @brief base class for device writers handling planar data
+     */
+    class WPPDeviceWriterP : public WPPDeviceWriter
+    {
+    public:
+        WPPDeviceWriterP(snd_pcm_t *dev, const WPCStreamSpec &spec)
+            : DeviceWriter(dev, spec),
+              _pbuf(new void *[spec.channels])
+        {
+        }
+
+        ~WPPDeviceWriterP()
+        {
+            delete _pbuf;
+        }
+
+    protected:
+        /// @brief buffer of void pointers to manipulate for reading planar data
+        void **_pbuf;
+    };
+
+    /**
+     * @class DWFullSample
+     * @brief class for writing full frame of non-planar samples
+     */
+    class DWFullSample : public WPPDeviceWriter
+    {
+    public:
+        using DeviceWriter::DeviceWriter;
+
+        int write(const AVFrame &frame) override
+        {
+            int cnt = 0;
+            while (cnt < frame.nb_samples)
+            {
+                const void *data = static_cast<const void *>(&(frame.extended_data[0][cnt * _bw]));
+                snd_pcm_uframes_t rv = snd_pcm_writei(_dev, data, frame.nb_samples - cnt);
+                if (rv < 0)
+                {
+                    rv = snd_pcm_recover(_dev, rv, 0);
+                }
+                if (rv < 0)
+                {
+                    return rv;
+                }
+                cnt += rv;
+            }
+            return 0;
+        }
+    };
+
+    /**
+     * @class DWFullSampleP
+     * @brief class for writing full frame of planar samples
+     */
+    class DWFullSampleP : public WPPDeviceWriterP
+    {
+    public:
+        using WPPDeviceWriterP::WPPDeviceWriterP;
+
+        int write(const AVFrame &frame) override
+        {
+            int cnt = 0;
+            while (cnt < frame.nb_samples)
+            {
+                for (int i = 0; i < frame.channels; ++i)
+                {
+                    _pbuf[i] = static_cast<void *>(&(frame.extended_data[i][cnt * _bw]));
+                }
+                snd_pcm_uframes_t rv = snd_pcm_writen(_dev, _pbuf, frame.nb_samples - cnt);
+                if (rv < 0)
+                {
+                    rv = snd_pcm_recover(_dev, rv, 0);
+                }
+                if (rv < 0)
+                {
+                    return rv;
+                }
+                cnt += rv;
+            }
+            return 0;
+        }
+    };
+
+    /**
+     * @class DWSubSample
+     * @brief class for writing frame of non-planar samples extracted from larger width
+     */
+    class DWSubSample : public WPPDeviceWriter
+    {
+    public:
+        using DeviceWriter::DeviceWriter;
+
+        int write(const AVFrame &frame) override
+        {
+            int cnt = 0;
+            while (cnt < frame.nb_samples)
+            {
+                const void *data = static_cast<const void *>(&(frame.extended_data[0][cnt * _bw]));
+                snd_pcm_uframes_t rv = snd_pcm_writei(_dev, data, 1);
+                if (rv < 0)
+                {
+                    rv = snd_pcm_recover(_dev, rv, 0);
+                }
+                if (rv < 0)
+                {
+                    return rv;
+                }
+                cnt += rv;
+            }
+            return 0;
+        }
+    };
+
+    /**
+     * @class DWSubSampleP
+     * @brief class for wirting frame of planar samples extracted from larger width
+     */
+    class DWSubSampleP : public WPPDeviceWriterP
+    {
+    public:
+        using WPPDeviceWriterP::WPPDeviceWriterP;
+
+        int write(const AVFrame &frame) override
+        {
+            int cnt = 0;
+            while (cnt < frame.nb_samples)
+            {
+                for (int i = 0; i < frame.channels; ++i)
+                {
+                    _pbuf[i] = static_cast<void *>(&(frame.extended_data[i][cnt * _bw]));
+                }
+                snd_pcm_uframes_t rv = snd_pcm_writen(_dev, _pbuf, 1);
+                if (rv < 0)
+                {
+                    rv = snd_pcm_recover(_dev, rv, 0);
+                }
+                if (rv < 0)
+                {
+                    return rv;
+                }
+                cnt += rv;
+            }
+            return 0;
+        }
+    };
+
+    /**
+     * @brief configure device according to context stream specification
+     *
+     * @param[out] dev libasound pcm device handle
+     * @param spec context stream specification
+     * @return 0 if successful, error code otherwise
+     */
+    int
+    conf_dev(snd_pcm_t *&dev, const WPCStreamSpec &spec)
+    {
+        const size_t fmt_idx = static_cast<size_t>(spec.format);
+        if (fmt_idx >= __SNDFMT_MAP.size())
+        {
+            // unsupported format
+            return whfa::pcm::Context::Worker::CODECINVAL;
+        }
+
+        snd_pcm_format_t format = __SNDFMT_MAP[fmt_idx];
+        const bool planar = av_sample_fmt_is_planar(spec.format) == 1;
+        const snd_pcm_access_t access = planar
+                                            ? SND_PCM_ACCESS_RW_NONINTERLEAVED
+                                            : SND_PCM_ACCESS_RW_INTERLEAVED;
+
+        // special handling of 24 bit audio packed in 32 bits
+        if (format == SND_PCM_FORMAT_S32 && spec.bitdepth == 24)
+        {
+            format = SND_PCM_FORMAT_S24;
+        }
+
+        snd_pcm_drain(dev);
+        return snd_pcm_set_params(dev,
+                                  format,
+                                  access,
+                                  spec.channels,
+                                  spec.rate,
+                                  __RESAMPLE,
+                                  __LATENCY_US);
+    }
+
+    /**
+     * @brief select device writer according to stream specification
+     *
+     * @param dev libasound PCM device handle
+     * @param spec stream specification
+     * @return device writer, nullptr on invalid/unsupported spec
+     */
+    WPPDeviceWriter *get_dev_writer(snd_pcm_t *dev, const WPCStreamSpec &spec)
+    {
+        const int bw = av_get_bytes_per_sample(spec.format) << 3;
+        const bool subsample = spec.bitdepth < bw;
+        const bool planar = av_sample_fmt_is_planar(spec.format) == 1;
+        WPPDeviceWriter *dw = nullptr;
+        if (subsample)
+        {
+            if (planar)
+            {
+                dw = static_cast<WPPDeviceWriter *>(new DWSubSampleP(dev, spec));
+            }
+            else
+            {
+                dw = static_cast<WPPDeviceWriter *>(new DWSubSample(dev, spec));
+            }
+        }
+        else
+        {
+            if (planar)
+            {
+                dw = static_cast<WPPDeviceWriter *>(new DWFullSampleP(dev, spec));
+            }
+            else
+            {
+                dw = static_cast<WPPDeviceWriter *>(new DWFullSample(dev, spec));
+            }
+        }
+        return dw;
+    }
+}
+
+namespace whfa::pcm
+{
+
+    /**
+     * whfa::pcm::Player::DeviceWriter public methods
+     */
+
+    Player::DeviceWriter::DeviceWriter(snd_pcm_t *dev, const Context::StreamSpec &spec)
+        : _dev(dev),
+          _bw(av_get_bytes_per_sample(spec.format))
+    {
+    }
+
+    Player::DeviceWriter::~DeviceWriter() {}
+
+    /**
+     * whfa::pcm::Player public methods
+     */
+
+    Player::Player(Context &context)
+        : Worker(context),
+          _dev(nullptr),
+          _writer(nullptr)
+    {
+    }
+
+    Player::~Player()
+    {
+        close();
+    }
+
+    bool Player::open(const char *devname)
+    {
+        std::lock_guard<std::mutex> lk(_mtx);
+
+        if (_dev != nullptr)
+        {
+            snd_pcm_drain(_dev);
+            snd_pcm_close(_dev);
+        }
+
+        const int rv = snd_pcm_open(&_dev, devname, SND_PCM_STREAM_PLAYBACK, 0);
+        const bool err = rv != 0;
+        if (err)
+        {
+            set_state_stop(rv);
+            snd_pcm_close(_dev);
+            _dev = nullptr;
+        }
+        return !err;
+    }
+
+    bool Player::configure()
+    {
+        std::lock_guard<std::mutex> lk(_mtx);
+
+        if (_dev == nullptr)
+        {
+            return false;
+        }
+
+        if (!_ctxt->get_stream_spec(_spec))
+        {
+            set_state_stop(Worker::FORMATINVAL | Worker::CODECINVAL);
+            return false;
+        }
+        _writer = get_dev_writer(_dev, _spec);
+
+        const int rv = conf_dev(_dev, _spec);
+        if (rv != 0)
+        {
+            set_state_stop(rv);
+            return false;
+        }
+
+        return true;
+    }
+
+    void Player::close()
+    {
+        std::lock_guard<std::mutex> lk(_mtx);
+
+        if (_writer != nullptr)
+        {
+            delete _writer;
+            _writer = nullptr;
+        }
+
+        int rv = 0;
+        if (_dev != nullptr)
+        {
+            rv |= snd_pcm_drain(_dev);
+            rv |= snd_pcm_close(_dev);
+            _dev = nullptr;
+        }
+        set_state_stop(rv);
+    }
+
+    /**
+     * whfa::pcm::Player protected methods
+     */
+
+    void Player::execute_loop_body()
+    {
+
+        if (_dev == nullptr)
+        {
+            set_state_stop();
+            return;
+        }
+
+        AVFrame *frame;
+        if (!_ctxt->get_frame_queue().pop(frame))
+        {
+            // due to flush, not an error state
+            return;
+        }
+        if (frame == nullptr)
+        {
+            // EOF, drain and stop
+            set_state_stop(snd_pcm_drain(_dev));
+            return;
+        }
+
+        const int rv = _writer->write(*frame);
+        set_state_timestamp(frame->pts);
+        av_frame_free(&frame);
+        if (rv != 0)
+        {
+            set_state_pause(rv);
+        }
+    }
+
+}

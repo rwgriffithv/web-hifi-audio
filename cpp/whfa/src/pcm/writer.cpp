@@ -1,10 +1,6 @@
 /**
  * @file writer.cpp
  * @author Robert Griffith
- *
- * @todo consider exposing device resampling and latency in public methods
- * @todo use map (array) of function pointers to handle writing different formats
- * @todo map indexed by spec.format
  */
 #include "pcm/writer.h"
 
@@ -12,10 +8,6 @@
 
 namespace
 {
-    /// @brief 1 = ALSA soft resampling, 0 = no resampling
-    constexpr int __RESAMPLE = 0;
-    /// @brief latency in device
-    constexpr unsigned int __LATENCY_US = 500000;
     /// @brief suffix used for raw metadata files
     constexpr const char *__METADATA_SFX = ".meta";
     /// @brief wave chunk format tag for pcm data
@@ -25,39 +17,12 @@ namespace
     /// @brief number of supported libav formats
     constexpr size_t __NUM_AVFMTS = 10;
 
+    /// @brief convience alias for stream spec
     using WPCStreamSpec = whfa::pcm::Context::StreamSpec;
-
-    /// @brief array type for asoundlib format mapping
-    using SndFormatMap = std::array<snd_pcm_format_t, __NUM_AVFMTS>;
+    /// @brief convience alias for file writer
+    using WPWFileWriter = whfa::pcm::Writer::FileWriter;
     /// @brief array type for wav format mapping
     using WavFormatMap = std::array<uint16_t, __NUM_AVFMTS>;
-
-    /**
-     * @brief compile time construction of sample format type map
-     *
-     * libav format -> asoundlib format (24 bit needs help)
-     */
-    constexpr SndFormatMap constSampleFormatMap()
-    {
-        SndFormatMap map = {SND_PCM_FORMAT_UNKNOWN};
-        // 8 bit
-        map[AV_SAMPLE_FMT_U8] = SND_PCM_FORMAT_U8;
-        map[AV_SAMPLE_FMT_U8P] = SND_PCM_FORMAT_U8;
-        // 16 bit
-        map[AV_SAMPLE_FMT_S16] = SND_PCM_FORMAT_S16;
-        map[AV_SAMPLE_FMT_S16P] = SND_PCM_FORMAT_S16;
-        // 24 or 32 bit
-        map[AV_SAMPLE_FMT_S32] = SND_PCM_FORMAT_S32;
-        map[AV_SAMPLE_FMT_S32P] = SND_PCM_FORMAT_S32;
-        // float
-        map[AV_SAMPLE_FMT_FLT] = SND_PCM_FORMAT_FLOAT;
-        map[AV_SAMPLE_FMT_FLTP] = SND_PCM_FORMAT_FLOAT;
-        // double
-        map[AV_SAMPLE_FMT_DBL] = SND_PCM_FORMAT_FLOAT64;
-        map[AV_SAMPLE_FMT_DBLP] = SND_PCM_FORMAT_FLOAT64;
-        // 64 bit not supported
-        return map;
-    }
 
     /**
      * @brief compile time construction of wav format type map
@@ -86,10 +51,110 @@ namespace
         return map;
     }
 
-    /// @brief libav format -> asoundlib format
-    constexpr const SndFormatMap __SNDFMT_MAP = constSampleFormatMap();
     /// @brief libav format -> wav chunk format tag
     constexpr const WavFormatMap __WAVFMT_MAP = constWavFormatMap();
+
+    /**
+     * @class WPWFileWriterSS
+     * @brief base class for file writers handling subsample data
+     */
+    class WPWFileWriterSS : public WPWFileWriter
+    {
+    public:
+        WPWFileWriterSS(std::ofstream &ofs, const WPCStreamSpec &spec)
+            : FileWriter(ofs, spec),
+              _bd(spec.bitdepth >> 3)
+        {
+        }
+
+    protected:
+        /// @brief bytedepth of individual channel sample
+        const int _bd;
+    };
+
+    /**
+     * @class FWFullSample
+     * @brief class for writing full frame of non-planar samples
+     */
+    class FWFullSample : public WPWFileWriter
+    {
+    public:
+        using FileWriter::FileWriter;
+
+        int write(const AVFrame &frame) override
+        {
+            const std::streamsize framesz = _bw * frame.nb_samples * frame.channels;
+            _ofs->write(reinterpret_cast<const char *>(frame.extended_data[0]), framesz);
+            return *_ofs ? 0 : _ofs->rdstate();
+        }
+    };
+
+    /**
+     * @class FWFullSampleP
+     * @brief class for writing full frame of planar samples
+     */
+    class FWFullSampleP : public WPWFileWriter
+    {
+    public:
+        using FileWriter::FileWriter;
+
+        int write(const AVFrame &frame) override
+        {
+            const int planesz = _bw * frame.nb_samples;
+            for (int i = 0; i < planesz; i += _bw)
+            {
+                for (int c = 0; c < frame.channels; ++c)
+                {
+                    _ofs->write(reinterpret_cast<const char *>(&(frame.extended_data[c][i])), _bw);
+                }
+            }
+            return *_ofs ? 0 : _ofs->rdstate();
+        }
+    };
+
+    /**
+     * @class FWSubSample
+     * @brief class for writing frame of non-planar samples extracted from larger width
+     */
+    class FWSubSample : public WPWFileWriterSS
+    {
+    public:
+        using WPWFileWriterSS::WPWFileWriterSS;
+
+        int write(const AVFrame &frame) override
+        {
+            const int planesz = _bw * frame.nb_samples;
+            for (int i = 0; i < planesz; i += _bw)
+            {
+                const char *data = reinterpret_cast<const char *>(&(frame.extended_data[0][i]));
+                _ofs->write(data, _bd);
+            }
+            return *_ofs ? 0 : _ofs->rdstate();
+        }
+    };
+
+    /**
+     * @class FWSubSampleP
+     * @brief class for wirting frame of planar samples extracted from larger width
+     */
+    class FWSubSampleP : public WPWFileWriterSS
+    {
+    public:
+        using WPWFileWriterSS::WPWFileWriterSS;
+
+        int write(const AVFrame &frame) override
+        {
+            const int planesz = _bw * frame.nb_samples;
+            for (int i = 0; i < planesz; i += _bw)
+            {
+                for (int c = 0; c < frame.channels; ++c)
+                {
+                    _ofs->write(reinterpret_cast<const char *>(&(frame.extended_data[c][i])), _bd);
+                }
+            }
+            return *_ofs ? 0 : _ofs->rdstate();
+        }
+    };
 
     /**
      * @brief write 2 byte value to output file stream
@@ -97,7 +162,8 @@ namespace
      * @param ofs open output file stream
      * @param u 2 byte value to write
      */
-    inline void write_2(std::ofstream &ofs, const uint16_t &u)
+    inline void
+    write_2(std::ofstream &ofs, const uint16_t &u)
     {
         ofs.write(reinterpret_cast<const char *>(&u), 2);
     }
@@ -136,66 +202,18 @@ namespace
     }
 
     /**
-     * @brief open device according to context stream specification
-     *
-     * @param[out] handle asoundlib pcm device handle
-     * @param name device name
-     * @param spec context stream specification
-     * @return 0 if successful, error code otherwise
-     */
-    int open_dev(snd_pcm_t *&handle, const char *name, const WPCStreamSpec &spec)
-    {
-        int rv;
-        if ((rv = snd_pcm_open(&handle, name, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
-        {
-            return rv;
-        }
-
-        const size_t fmt_idx = static_cast<size_t>(spec.format);
-        if (fmt_idx >= __SNDFMT_MAP.size())
-        {
-            // unsupported format
-            return -1;
-        }
-
-        snd_pcm_format_t format = __SNDFMT_MAP[fmt_idx];
-        const bool planar = av_sample_fmt_is_planar(spec.format) == 1;
-        const snd_pcm_access_t access = planar
-                                            ? SND_PCM_ACCESS_RW_NONINTERLEAVED
-                                            : SND_PCM_ACCESS_RW_INTERLEAVED;
-
-        // special handling of 24 bit audio packed in 32 bits
-        if (format == SND_PCM_FORMAT_S32 && spec.bitdepth == 24)
-        {
-            format = SND_PCM_FORMAT_S24;
-        }
-
-        if ((rv = snd_pcm_set_params(handle,
-                                     format,
-                                     access,
-                                     spec.channels,
-                                     spec.rate,
-                                     __RESAMPLE,
-                                     __LATENCY_US)) < 0)
-        {
-            return rv;
-        }
-        return 0;
-    }
-
-    /**
      * @brief open file to write raw data to, and open and populate metadata file
      *
      * @param ofs output file stream to open
-     * @param name file location to open
+     * @param filepath file location to open
      * @param spec context stream specification
      * @return 0 if successful, error coder otherwise
      */
-    int open_file_raw(std::ofstream &ofs, const char *name, const WPCStreamSpec &spec)
+    int open_file_raw(std::ofstream &ofs, const char *filepath, const WPCStreamSpec &spec)
     {
-        std::string name_md(name);
-        name_md.append(__METADATA_SFX);
-        std::ofstream ofs_md(name_md);
+        std::string filepath_md(filepath);
+        filepath_md.append(__METADATA_SFX);
+        std::ofstream ofs_md(filepath_md);
         if (!ofs_md)
         {
             return ofs_md.rdstate();
@@ -210,7 +228,7 @@ namespace
         ofs_md << ".rate = " << spec.rate << std::endl;
 
         ofs_md.close();
-        ofs.open(name, std::ios::out | std::ios::binary);
+        ofs.open(filepath, std::ios::out | std::ios::binary);
         return ofs ? 0 : ofs.rdstate();
     }
 
@@ -218,13 +236,13 @@ namespace
      * @brief open WAV file and write header (total file size filled in later)
      *
      * @param ofs output file stream to open and write to
-     * @param name file location to open
+     * @param filepath file location to open
      * @param spec context stream specification
      * @return 0 if successful, error coder otherwise
      */
-    int open_file_wav(std::ofstream &ofs, const char *name, const WPCStreamSpec &spec)
+    int open_file_wav(std::ofstream &ofs, const char *filepath, const WPCStreamSpec &spec)
     {
-        ofs.open(name, std::ios::out | std::ios::binary);
+        ofs.open(filepath, std::ios::out | std::ios::binary);
         if (!ofs)
         {
             return ofs.rdstate();
@@ -305,259 +323,43 @@ namespace
     }
 
     /**
-     * @brief write device using interleaved full samples (bitdepth == primitive bitwidth)
-     *
-     * @param handle asoundlib pcm device handle
-     * @param frame libav frame to write
-     * @param spec context stream specification
-     * @param pbuf allocated void* buffer to use for accessing planar data (unused)
-     * @return 0 if successful, error code otherwise
-     */
-    int write_dev_fs(snd_pcm_t *handle, const AVFrame &frame, const WPCStreamSpec &spec, [[maybe_unused]] void **pbuf)
-    {
-        const int ssz = spec.bitdepth >> 3;
-        int cnt = 0;
-        while (cnt < frame.nb_samples)
-        {
-            const void *data = static_cast<const void *>(&(frame.extended_data[0][cnt * ssz]));
-            snd_pcm_uframes_t rv = snd_pcm_writei(handle, data, frame.nb_samples - cnt);
-            if (rv < 0)
-            {
-                rv = snd_pcm_recover(handle, rv, 0);
-            }
-            if (rv < 0)
-            {
-                return rv;
-            }
-            cnt += rv;
-        }
-        return 0;
-    }
-
-    /**
-     * @brief write device using planar full samples (bitdepth == primitive bitwidth)
-     *
-     * @param handle asoundlib pcm device handle
-     * @param frame libav frame to write
-     * @param spec context stream specification
-     * @param pbuf allocated void* buffer to use for accessing planar data
-     * @return 0 if successful, error code otherwise
-     */
-    int write_dev_fs_p(snd_pcm_t *handle, const AVFrame &frame, const WPCStreamSpec &spec, void **pbuf)
-    {
-        const int ssz = spec.bitdepth >> 3;
-        int cnt = 0;
-        while (cnt < frame.nb_samples)
-        {
-            for (int i = 0; i < frame.channels; ++i)
-            {
-                pbuf[i] = static_cast<void *>(&(frame.extended_data[i][cnt * ssz]));
-            }
-            snd_pcm_uframes_t rv = snd_pcm_writen(handle, pbuf, frame.nb_samples - cnt);
-            if (rv < 0)
-            {
-                rv = snd_pcm_recover(handle, rv, 0);
-            }
-            if (rv < 0)
-            {
-                return rv;
-            }
-            cnt += rv;
-        }
-        return 0;
-    }
-
-    /**
-     * @brief write device using interleaved sub-samples (bitdepth <= primitive bitwidth)
-     *
-     * @param handle asoundlib pcm device handle
-     * @param frame libav frame to write
-     * @param spec context stream specification
-     * @param pbuf allocated void* buffer to use for accessing planar data (unused)
-     * @return 0 if successful, error code otherwise
-     */
-    int write_dev_ss(snd_pcm_t *handle, const AVFrame &frame, const WPCStreamSpec &spec, [[maybe_unused]] void **pbuf)
-    {
-        const int ssz = av_get_bytes_per_sample(spec.format);
-        int cnt = 0;
-        while (cnt < frame.nb_samples)
-        {
-            const void *data = static_cast<const void *>(&(frame.extended_data[0][cnt * ssz]));
-            snd_pcm_uframes_t rv = snd_pcm_writei(handle, data, 1);
-            if (rv < 0)
-            {
-                rv = snd_pcm_recover(handle, rv, 0);
-            }
-            if (rv < 0)
-            {
-                return rv;
-            }
-            cnt += rv;
-        }
-        return 0;
-    }
-
-    /**
-     * @brief write device using planar sub-samples (bitdepth <= primitive bitwidth)
-     *
-     * @param handle asoundlib pcm device handle
-     * @param frame libav frame to write
-     * @param spec context stream specification
-     * @param pbuf allocated void* buffer to use for accessing planar data
-     * @return 0 if successful, error code otherwise
-     */
-    int write_dev_ss_p(snd_pcm_t *handle, const AVFrame &frame, const WPCStreamSpec &spec, void **pbuf)
-    {
-        const int ssz = av_get_bytes_per_sample(spec.format);
-        int cnt = 0;
-        while (cnt < frame.nb_samples)
-        {
-            for (int i = 0; i < frame.channels; ++i)
-            {
-                pbuf[i] = static_cast<void *>(&(frame.extended_data[i][cnt * ssz]));
-            }
-            snd_pcm_uframes_t rv = snd_pcm_writen(handle, pbuf, 1);
-            if (rv < 0)
-            {
-                rv = snd_pcm_recover(handle, rv, 0);
-            }
-            if (rv < 0)
-            {
-                return rv;
-            }
-            cnt += rv;
-        }
-        return 0;
-    }
-
-    /**
-     * @brief write file using planar sub-samples (bitdepth <= primitive bitwidth)
-     *
-     * @param ofs output file stream
-     * @param frame libav frame to write
-     * @param spec context stream specification
-     * @param pbuf allocated void* buffer to use for accessing planar data
-     * @return 0 if successful, error code otherwise
-     */
-    int write_file_fs(std::ofstream &ofs, const AVFrame &frame, const WPCStreamSpec &spec)
-    {
-        const std::streamsize ssz = spec.bitdepth >> 3;
-        const std::streamsize framesz = ssz * frame.nb_samples * frame.channels;
-        ofs.write(reinterpret_cast<const char *>(frame.extended_data[0]), framesz);
-        return ofs ? 0 : ofs.rdstate();
-    }
-
-    /**
-     * @brief write file using planar sub-samples (bitdepth <= primitive bitwidth)
-     *
-     * @param ofs output file stream
-     * @param frame libav frame to write
-     * @param spec context stream specification
-     * @param pbuf allocated void* buffer to use for accessing planar data
-     * @return 0 if successful, error code otherwise
-     */
-    int write_file_fs_p(std::ofstream &ofs, const AVFrame &frame, const WPCStreamSpec &spec)
-    {
-        const int ssz = spec.bitdepth >> 3;
-        const int planesz = ssz * frame.nb_samples;
-        for (int i = 0; i < planesz; i += ssz)
-        {
-            for (int c = 0; c < frame.channels; ++c)
-            {
-                ofs.write(reinterpret_cast<const char *>(&(frame.extended_data[c][i])), ssz);
-            }
-        }
-        return ofs ? 0 : ofs.rdstate();
-    }
-
-    /**
-     * @brief write file using planar sub-samples (bitdepth <= primitive bitwidth)
-     *
-     * @param ofs output file stream
-     * @param frame libav frame to write
-     * @param spec context stream specification
-     * @param pbuf allocated void* buffer to use for accessing planar data
-     * @return 0 if successful, error code otherwise
-     */
-    int write_file_ss(std::ofstream &ofs, const AVFrame &frame, const WPCStreamSpec &spec)
-    {
-        const int ssz = av_get_bytes_per_sample(spec.format);
-        const int planesz = ssz * frame.nb_samples;
-        const std::streamsize subsz = spec.bitdepth >> 3;
-        for (int i = 0; i < planesz; i += ssz)
-        {
-            const char *data = reinterpret_cast<const char *>(&(frame.extended_data[0][i]));
-            ofs.write(data, subsz);
-        }
-        return ofs ? 0 : ofs.rdstate();
-    }
-
-    /**
-     * @brief write file using planar sub-samples (bitdepth <= primitive bitwidth)
-     *
-     * @param ofs output file stream
-     * @param frame libav frame to write
-     * @param spec context stream specification
-     * @param pbuf allocated void* buffer to use for accessing planar data
-     * @return 0 if successful, error code otherwise
-     */
-    int write_file_ss_p(std::ofstream &ofs, const AVFrame &frame, const WPCStreamSpec &spec)
-    {
-        const int ssz = av_get_bytes_per_sample(spec.format);
-        const int planesz = ssz * frame.nb_samples;
-        const std::streamsize subsz = spec.bitdepth >> 3;
-        for (int i = 0; i < planesz; i += ssz)
-        {
-            for (int c = 0; c < frame.channels; ++c)
-            {
-                ofs.write(reinterpret_cast<const char *>(&(frame.extended_data[c][i])), subsz);
-            }
-        }
-        return ofs ? 0 : ofs.rdstate();
-    }
-
-    /**
-     * @brief select device writer according to stream specification
-     *
-     * @param spec stream specification
-     * @param[out] pbuf planar data buffer, allocated if needed
-     * @return device writer, nullptr on invalid/unsupported spec
-     */
-    whfa::pcm::Writer::DeviceWriter get_dev_writer(const WPCStreamSpec &spec, void **&pbuf)
-    {
-        if (pbuf != nullptr)
-        {
-            delete pbuf;
-        }
-        const bool planar = av_sample_fmt_is_planar(spec.format) == 1;
-        const int bw = av_get_bytes_per_sample(spec.format) << 3;
-        const bool subsample = spec.bitdepth < bw;
-        if (planar)
-        {
-            // planar buffer required by planar device writing functions
-            pbuf = new void *[spec.channels];
-            return subsample ? write_dev_ss_p : write_dev_fs_p;
-        }
-        pbuf = nullptr;
-        return subsample ? write_dev_ss : write_dev_fs;
-    }
-
-    /**
      * @brief select file writer according to stream specification
      *
+     * @param ofs output file stream
      * @param spec stream specification
      * @return file writer, nullptr on invalid/unsupported spec
      */
-    whfa::pcm::Writer::FileWriter get_file_writer(const WPCStreamSpec &spec)
+    WPWFileWriter *get_file_writer(std::ofstream &ofs, const WPCStreamSpec &spec)
     {
-        const bool planar = av_sample_fmt_is_planar(spec.format) == 1;
         const int bw = av_get_bytes_per_sample(spec.format) << 3;
         const bool subsample = spec.bitdepth < bw;
-        if (planar)
+        const bool planar = av_sample_fmt_is_planar(spec.format) == 1;
+        WPWFileWriter *fw = nullptr;
+        if (subsample)
         {
-            return subsample ? write_file_ss_p : write_file_fs_p;
+            if (planar)
+            {
+                fw = static_cast<WPWFileWriter *>(new FWSubSampleP(ofs, spec));
+            }
+            else
+            {
+                fw = static_cast<WPWFileWriter *>(new FWSubSample(ofs, spec));
+            }
         }
-        return subsample ? write_file_ss : write_file_fs;
+        else
+        {
+            if (planar)
+            {
+
+                fw = static_cast<WPWFileWriter *>(new FWFullSampleP(ofs, spec));
+            }
+            else
+            {
+
+                fw = static_cast<WPWFileWriter *>(new FWFullSample(ofs, spec));
+            }
+        }
+        return fw;
     }
 }
 
@@ -565,16 +367,25 @@ namespace whfa::pcm
 {
 
     /**
+     * whfa::pcm::Writer::FileWriter public methods
+     */
+
+    Writer::FileWriter::FileWriter(std::ofstream &ofs, const Context::StreamSpec &spec)
+        : _ofs(&ofs),
+          _bw(av_get_bytes_per_sample(spec.format))
+    {
+    }
+
+    Writer::FileWriter::~FileWriter() {}
+
+    /**
      * whfa::pcm::Writer public methods
      */
 
     Writer::Writer(Context &context)
         : Worker(context),
-          _mode(OutputType::DEVICE),
-          _dev(nullptr),
-          _pbuf(nullptr),
-          _dev_wfn(nullptr),
-          _file_wfn(nullptr)
+          _mode(OutputType::FILE_RAW),
+          _writer(nullptr)
     {
     }
 
@@ -583,10 +394,13 @@ namespace whfa::pcm
         close();
     }
 
-    bool Writer::open(const char *name, OutputType mode)
+    bool Writer::open(const char *filepath, OutputType mode)
     {
         std::lock_guard<std::mutex> lk(_mtx);
-        close_unsafe();
+        if (_ofs.is_open())
+        {
+            _ofs.close();
+        }
 
         _mode = mode;
 
@@ -598,31 +412,33 @@ namespace whfa::pcm
         int rv = 0;
         switch (_mode)
         {
-        case DEVICE:
-            rv = open_dev(_dev, name, _spec);
-            _dev_wfn = get_dev_writer(_spec, _pbuf);
         case FILE_RAW:
-            rv = open_file_raw(_ofs, name, _spec);
-            _file_wfn = get_file_writer(_spec);
+            rv = open_file_raw(_ofs, filepath, _spec);
             break;
         case FILE_WAV:
-            rv = open_file_wav(_ofs, name, _spec);
-            _file_wfn = get_file_writer(_spec);
+            rv = open_file_wav(_ofs, filepath, _spec);
             break;
         }
-        if (rv != 0)
+        _writer = get_file_writer(_ofs, _spec);
+        const bool err = rv != 0;
+        if (err)
         {
             set_state_stop(rv);
-            close_unsafe();
-            return false;
+            if (_ofs.is_open())
+            {
+                _ofs.close();
+            }
         }
-        return true;
+        return err;
     }
 
-    bool Writer::close()
+    void Writer::close()
     {
         std::lock_guard<std::mutex> lk(_mtx);
-        return close_unsafe();
+        if (_ofs.is_open())
+        {
+            _ofs.close();
+        }
     }
 
     /**
@@ -631,30 +447,15 @@ namespace whfa::pcm
 
     void Writer::execute_loop_body()
     {
-        switch (_mode)
+        if (!_ofs.is_open())
         {
-        case DEVICE:
-            if (_dev == nullptr)
-            {
-                set_state_stop();
-                return;
-            }
-            // snd_pcm_writei
-            break;
-        case FILE_RAW:
-        case FILE_WAV:
-            if (!_ofs.is_open())
-            {
-                set_state_stop();
-                return;
-            }
-            else if (!_ofs)
-            {
-                set_state_pause(_ofs.rdstate());
-                return;
-            }
-            // both are now writing interleaved binary samples
-            break;
+            set_state_stop();
+            return;
+        }
+        else if (!_ofs)
+        {
+            set_state_pause(_ofs.rdstate());
+            return;
         }
 
         AVFrame *frame;
@@ -667,52 +468,17 @@ namespace whfa::pcm
         {
             // EOF, stop and close (no queue to forward to)
             set_state_stop();
-            close_unsafe();
+            _ofs.close();
             return;
         }
 
-        int rv;
-        switch (_mode)
-        {
-        case DEVICE:
-            rv = _dev_wfn(_dev, *frame, _spec, _pbuf);
-            break;
-        case FILE_RAW:
-        case FILE_WAV:
-            rv = _file_wfn(_ofs, *frame, _spec);
-            break;
-        }
+        const int rv = _writer->write(*frame);
         set_state_timestamp(frame->pts);
         av_frame_free(&frame);
         if (rv != 0)
         {
             set_state_pause(rv);
         }
-    }
-
-    bool Writer::close_unsafe()
-    {
-        if (_dev != nullptr)
-        {
-            int rv = 0;
-            rv |= snd_pcm_drain(_dev);
-            rv |= snd_pcm_close(_dev);
-            if (rv < 0)
-            {
-                set_state_pause(rv);
-            }
-        }
-        if (_ofs.is_open())
-        {
-            _ofs.close();
-        }
-        if (_pbuf != nullptr)
-        {
-            delete _pbuf;
-        }
-        _dev_wfn = nullptr;
-        _file_wfn = nullptr;
-        return false;
     }
 
 }

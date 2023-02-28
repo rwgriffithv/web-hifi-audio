@@ -1,49 +1,49 @@
 /**
- * @file writer.h
+ * @file player.h
  * @author Robert Griffith
  */
 #pragma once
 
 #include "pcm/context.h"
 
-#include <fstream>
+#include <alsa/asoundlib.h>
 
 namespace whfa::pcm
 {
 
     /**
-     * @class whfa::pcm::Writer
-     * @brief class for parallel writing of PCM audio frames
+     * @class whfa::pcm::Player
+     * @brief class for parallel playing of PCM audio frames
      *
-     * context worker class to abstract forwarding libav frames to files
+     * context worker class to abstract forwarding libav frames to files and devices
      * will write to only one sink at a time (potentially changed later)
      * a context should only have one writer/player, as it consumes frames destructively from the queue
      *
      * @todo: utilize queue pop timeouts? period determined from sample rate?
      * @todo: try creating common base class for Player and Writer, multithreaded processing of each poppped frame
      */
-    class Writer : public Context::Worker
+    class Player : public Context::Worker
     {
     public:
         /**
-         * @class whfa::pcm::Writer::FileWriter
-         * @brief small class to handle efficient varitations of writing to file
+         * @class whfa::pcm::Player::DeviceWriter
+         * @brief small class to handle efficient varitations of writing to device
          */
-        class FileWriter
+        class DeviceWriter
         {
         public:
             /**
              * @brief constructor
              *
-             * @param ofs open output file stream to write to
+             * @param dev libasound PCM device handle
              * @param spec context stream specification
              */
-            FileWriter(std::ofstream &ofs, const Context::StreamSpec &spec);
+            DeviceWriter(snd_pcm_t *dev, const Context::StreamSpec &spec);
 
             /**
              * @brief destructor
              */
-            virtual ~FileWriter();
+            virtual ~DeviceWriter();
 
             /**
              * @brief write frame to device
@@ -54,22 +54,10 @@ namespace whfa::pcm
             virtual int write(const AVFrame &frame) = 0;
 
         protected:
-            /// @brief output file stream
-            std::ofstream *_ofs;
+            /// @brief libasound PCM device handle
+            snd_pcm_t *_dev;
             /// @brief bytewidth of individual channel sample
             const int _bw;
-        };
-
-        /**
-         * @enum whfa::Writer::OutputType
-         * @brief enum defining the output destination
-         */
-        enum OutputType
-        {
-            /// @brief PCM file output
-            FILE_RAW,
-            /// @brief PCM WAV file output
-            FILE_WAV
         };
 
         /**
@@ -77,26 +65,37 @@ namespace whfa::pcm
          *
          * @param context threadsafe audio context to access
          */
-        Writer(Context &context);
+        Player(Context &context);
 
         /**
-         * @brief destructor to ensure file closure
+         * @brief destructor to ensure device closure
          */
-        ~Writer();
+        ~Player();
 
         /**
-         * @brief open connection to output destiation to write to
+         * @brief open
          *
          * sets mode, open connection, sets spec, and sets writer
+         * only one device will be open at a time
+         * closing and opening of same device can be asynchronous and may fail
+         * should open one device for as long as possible and use configure() for new audio
          *
-         * @param filepath the file location to open
-         * @param mode the specified mode of output / writing
+         * @param devname the name of the device to open
          * @return true on success, false otherwise
          */
-        bool open(const char *filepath, OutputType mode);
+        bool open(const char *devname);
 
         /**
-         * @brief close open output destination(s)
+         * @brief configure open device using current Context
+         *
+         * drains current playback and sets hardware and software parameters for device
+         *
+         * @return false if failure or no device opened
+         */
+        bool configure();
+
+        /**
+         * @brief close open device
          */
         void close();
 
@@ -108,14 +107,12 @@ namespace whfa::pcm
          */
         void execute_loop_body() override;
 
-        /// @brief mode of output / writing
-        OutputType _mode;
-        /// @brief output file stream, closed if invalid
-        std::ofstream _ofs;
+        /// @brief libasound PCM device handle
+        snd_pcm_t *_dev;
         /// @brief context stream specification
         Context::StreamSpec _spec;
-        /// @brief class to write to file with
-        FileWriter *_writer;
+        /// @brief class to write to device with
+        DeviceWriter *_writer;
     };
 
 }

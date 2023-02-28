@@ -98,30 +98,11 @@ namespace whfa::util
         }
     }
 
-    void Threader::set_state_stop()
-    {
-        _state.run = false;
-        _state.timestamp = 0;
-        if (_callback != nullptr)
-        {
-            _callback(_state);
-        }
-    }
-
     void Threader::set_state_stop(int error)
     {
         _state.run = false;
         _state.timestamp = 0;
         _state.error = error;
-        if (_callback != nullptr)
-        {
-            _callback(_state);
-        }
-    }
-
-    void Threader::set_state_pause()
-    {
-        _state.run = false;
         if (_callback != nullptr)
         {
             _callback(_state);
@@ -150,10 +131,6 @@ namespace whfa::util
     void Threader::set_state_timestamp(int64_t timestamp)
     {
         _state.timestamp = timestamp;
-        if (_callback != nullptr)
-        {
-            _callback(_state);
-        }
     }
 
 }
