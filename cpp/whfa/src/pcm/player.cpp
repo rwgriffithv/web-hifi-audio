@@ -210,8 +210,7 @@ namespace
      * @param spec context stream specification
      * @return 0 if successful, error code otherwise
      */
-    int
-    configure_dev(snd_pcm_t *&dev, const WPCStreamSpec &spec)
+    int configure_dev(snd_pcm_t *&dev, const WPCStreamSpec &spec)
     {
         const size_t fmt_idx = static_cast<size_t>(spec.format);
         if (fmt_idx >= __SNDFMT_MAP.size())
