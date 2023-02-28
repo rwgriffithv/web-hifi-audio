@@ -211,7 +211,7 @@ namespace
      * @return 0 if successful, error code otherwise
      */
     int
-    conf_dev(snd_pcm_t *&dev, const WPCStreamSpec &spec)
+    configure_dev(snd_pcm_t *&dev, const WPCStreamSpec &spec)
     {
         const size_t fmt_idx = static_cast<size_t>(spec.format);
         if (fmt_idx >= __SNDFMT_MAP.size())
@@ -349,7 +349,7 @@ namespace whfa::pcm
         }
         _writer = get_dev_writer(_dev, _spec);
 
-        const int rv = conf_dev(_dev, _spec);
+        const int rv = configure_dev(_dev, _spec);
         if (rv != 0)
         {
             set_state_stop(rv);
