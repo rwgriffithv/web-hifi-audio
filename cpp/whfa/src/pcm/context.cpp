@@ -192,7 +192,10 @@ namespace whfa::pcm
             spec.format = _cdc_ctxt->sample_fmt;
             spec.timebase = _fmt_ctxt->streams[_stm_idx]->time_base;
             spec.duration = _fmt_ctxt->streams[_stm_idx]->duration;
-            spec.bitdepth = _cdc_ctxt->bits_per_raw_sample;
+            // assume and use full bitwidth if not specified
+            spec.bitdepth = (_cdc_ctxt->bits_per_raw_sample == 0)
+                                ? av_get_bytes_per_sample(spec.format) << 3
+                                : _cdc_ctxt->bits_per_raw_sample;
             spec.channels = _cdc_ctxt->channels;
             spec.rate = _cdc_ctxt->sample_rate;
         }
