@@ -1,9 +1,6 @@
 /**
  * @file main.cpp
  * @author Robert Griffith
- *
- * @todo more tests as methods
- * @todo building on WSL still has linking errors, makefile was hacked together to just find compile-time errors better
  */
 #include "pcm/decoder.h"
 #include "pcm/player.h"
@@ -20,16 +17,8 @@ namespace wu = whfa::util;
 
 namespace
 {
-    constexpr size_t __CAP_QUEUE_P = 500;
-    constexpr size_t __CAP_QUEUE_F = 500;
 
     constexpr size_t __ERRBUFSZ = 256;
-
-    constexpr const char *__OUTDEV = "default";
-    constexpr const char *__OUTWAV = "out.wav";
-    constexpr const char *__OUTRAW = "out.raw";
-
-    constexpr const bool __PLAY = false;
 
     char __errbuf[__ERRBUFSZ];
     wp::Context *__ctxt;
@@ -45,6 +34,15 @@ namespace
         std::cerr << "AVERROR (" << averror << ") : " << __errbuf << std::endl;
     }
 
+    void print_usage()
+    {
+        std::cout << "\
+usage:\n\
+   <application> <input url> -play <output device name>\n\
+   <application> <input url> -raw <output file name>\n\
+   <application> <input url> -wav <output file name>\n";
+    }
+
     void set_context(wp::Context &c)
     {
         __ctxt = &c;
@@ -52,11 +50,11 @@ namespace
 
     void state_cb(const wu::Threader::State &s, const char *str)
     {
+        std::cerr << "CALLBACK (" << str << ")" << std::endl;
+        std::cerr << "TIMESTAMP: " << s.timestamp << std::endl;
         if (s.error != 0)
         {
-            std::cerr << "CALLBACK (" << str << ")" << std::endl;
             print_error(s.error);
-            std::cerr << "TIMESTAMP: " << s.timestamp << std::endl;
             if (!s.run)
             {
                 __ctxt->close();
@@ -95,12 +93,13 @@ namespace
 
 int main(int argc, char **argv)
 {
-    if (argc != 3)
+    if (argc != 4)
     {
+        print_usage();
         return 1;
     }
 
-    wp::Context c(__CAP_QUEUE_F, __CAP_QUEUE_P);
+    wp::Context c;
     set_context(c);
 
     wp::Reader r(c);
@@ -116,32 +115,52 @@ int main(int argc, char **argv)
     wp::Context::enable_networking();
 
     std::cout << "openining " << argv[1] << std::endl;
-
     rv = c.open(argv[1]);
     if (rv != 0)
     {
-        std::cerr << "failed to open input" << std::endl;
+        std::cerr << "failed to open input: " << argv[1] << std::endl;
         print_error(rv);
         return 1;
     }
 
-    if (__PLAY)
+    std::cout << "parsing option: " << argv[2] << std::endl;
+    if (strcmp(argv[2], "-play") == 0)
     {
-        if (!p.open(__OUTDEV))
+        // playing to device
+        if (!p.open(argv[3]))
         {
-            std::cerr << "failed to open device output" << std::endl;
+            std::cerr << "failed to open device output: " << argv[3] << std::endl;
             p.get_state(state);
             print_error(state.error);
             return 1;
         }
-        p.configure();
+        p.configure(); // using default resample & latency
         p.start(state_cb_p);
     }
     else
     {
-        if (!w.open(__OUTWAV, wp::Writer::OutputType::FILE_RAW))
+        wp::Writer::OutputType ot;
+        bool valid = false;
+        if (strcmp(argv[2], "-raw") == 0)
         {
-            std::cerr << "failed to open file output" << std::endl;
+            ot = wp::Writer::OutputType::FILE_RAW;
+            valid = true;
+        }
+        else if (strcmp(argv[2], "-wav") == 0)
+        {
+            ot = wp::Writer::OutputType::FILE_WAV;
+            valid = true;
+        }
+        if (!valid)
+        {
+            std::cerr << "invalid option: " << argv[2] << std::endl;
+            print_usage();
+            return 1;
+        }
+        // writing to file
+        if (!w.open(argv[3], ot))
+        {
+            std::cerr << "failed to open file output: " << argv[3] << std::endl;
             w.get_state(state);
             print_error(state.error);
             return 1;

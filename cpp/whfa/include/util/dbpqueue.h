@@ -25,7 +25,7 @@ namespace whfa::util
     class DBPQueue
     {
     public:
-        /// @brief callback type to be invoked when flushing
+        /// @brief callback type to be invoked when flushing (stateless, mostly for destruction)
         using FlushCallback = void (*)(T *);
 
         /**
@@ -56,8 +56,14 @@ namespace whfa::util
         ~DBPQueue()
         {
             flush();
-            delete _push_buf.buf;
-            delete _pop_buf.buf;
+            {
+                std::lock_guard<std::mutex> pop_lk(_pop_mtx);
+                delete _pop_buf.buf;
+            }
+            {
+                std::lock_guard<std::mutex> push_lk(_push_mtx);
+                delete _push_buf.buf;
+            }
         }
 
         /**
@@ -79,13 +85,13 @@ namespace whfa::util
                 _pop_st.flush = true;
                 if (cb != nullptr)
                 {
-                    while (_pop_buf.pos != _pop_buf.sz)
+                    while (_pop_buf.sz != 0)
                     {
                         cb(_pop_buf.buf[_pop_buf.pos++]);
+                        _pop_buf.sz--;
                     }
                 }
                 _pop_buf.pos = 0;
-                _pop_buf.sz = 0;
             }
             _pop_cond.notify_all();
 
@@ -108,7 +114,7 @@ namespace whfa::util
         /**
          * @brief remove and retrieve first element in queue
          *
-         * @param[out] value moved from front of queue
+         * @param[out] ptr pointer moved from front of queue
          * @return true if successful, false if flushing or flushed while waiting
          */
         bool pop(T *&ptr)
@@ -150,7 +156,7 @@ namespace whfa::util
         /**
          * @brief remove and retrieve first element in queue within a timeout period
          *
-         * @param[out] value moved from front of queue
+         * @param[out] ptr pointer moved from front of queue
          * @param timeout max duration to wait for
          * @return true if successful, false if flushed or timeout reached
          */

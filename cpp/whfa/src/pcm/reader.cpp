@@ -6,9 +6,12 @@
 
 namespace
 {
-
+    
+    /// @brief convenience alias for std::min and std::max
     using Choose64 = const int64_t &(*)(const int64_t &, const int64_t &);
+    /// @brief convenience alias for std::min<int64_t>
     constexpr Choose64 min_i64 = std::min<int64_t>;
+    /// @brief convenience alias for std::max<int64_t>
     constexpr Choose64 max_i64 = std::max<int64_t>;
 
 }

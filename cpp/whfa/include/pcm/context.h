@@ -25,6 +25,11 @@ namespace whfa::pcm
     class Context
     {
     public:
+        /// @brief default packet queue capacity
+        static constexpr size_t DEF_PKT_QCAP = 1000;
+        /// @brief default frame queue capacity
+        static constexpr size_t DEF_FRM_QCAP = 1000;
+        
         /**
          * @class whfa::pcm::Context::Worker
          * @brief simple base Threader class for working with Context
@@ -87,10 +92,10 @@ namespace whfa::pcm
         /**
          * @brief constructor
 
-         * @param packet_queue_capacity capacity of underlying packet DBPQueue
-         * @param frame_queue_capacity capacity of underlying frame DBPQueue
+         * @param pkt_qcap capacity of underlying packet DBPQueue
+         * @param frm_qcap capacity of underlying frame DBPQueue
          */
-        Context(size_t packet_queue_capacity, size_t frame_queue_capacity);
+        Context(size_t pkt_qcap = DEF_PKT_QCAP, size_t frm_qcap = DEF_FRM_QCAP);
 
         /**
          * @brief destructor, closes context

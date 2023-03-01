@@ -8,6 +8,7 @@
 
 namespace
 {
+
     /// @brief suffix used for raw metadata files
     constexpr const char *__METADATA_SFX = ".meta";
     /// @brief wave chunk format tag for pcm data
@@ -17,9 +18,9 @@ namespace
     /// @brief number of supported libav formats
     constexpr size_t __NUM_AVFMTS = 10;
 
-    /// @brief convience alias for stream spec
+    /// @brief convenience alias for stream spec
     using WPCStreamSpec = whfa::pcm::Context::StreamSpec;
-    /// @brief convience alias for file writer
+    /// @brief convenience alias for file writer
     using WPWFileWriter = whfa::pcm::Writer::FileWriter;
     /// @brief array type for wav format mapping
     using WavFormatMap = std::array<uint16_t, __NUM_AVFMTS>;
@@ -55,6 +56,19 @@ namespace
     constexpr const WavFormatMap __WAVFMT_MAP = constWavFormatMap();
 
     /**
+     * @brief get number of bytes required to contain bitdepth bits (rounding up)
+     *
+     * @param bitdepth number of bits
+     * @return number of bytes
+     */
+    inline int get_bytedepth(int bitdepth)
+    {
+        const int b = bitdepth >> 3;
+        const int r = bitdepth & 0x7;
+        return b + std::min<int>(r, 1);
+    }
+
+    /**
      * @class WPWFileWriterSS
      * @brief base class for file writers handling subsample data
      */
@@ -63,7 +77,7 @@ namespace
     public:
         WPWFileWriterSS(std::ofstream &ofs, const WPCStreamSpec &spec)
             : FileWriter(ofs, spec),
-              _bd(spec.bitdepth >> 3)
+              _bd(get_bytedepth(spec.bitdepth))
         {
         }
 
@@ -73,10 +87,10 @@ namespace
     };
 
     /**
-     * @class FWFullSample
-     * @brief class for writing full frame of non-planar samples
+     * @class FWFullSampleI
+     * @brief class for writing full frame of interleaved samples
      */
-    class FWFullSample : public WPWFileWriter
+    class FWFullSampleI : public WPWFileWriter
     {
     public:
         using FileWriter::FileWriter;
@@ -84,7 +98,8 @@ namespace
         int write(const AVFrame &frame) override
         {
             const std::streamsize framesz = _bw * frame.nb_samples * frame.channels;
-            _ofs->write(reinterpret_cast<const char *>(frame.extended_data[0]), framesz);
+            const char *data = reinterpret_cast<const char *>(frame.extended_data[0]);
+            _ofs->write(data, framesz);
             return *_ofs ? 0 : _ofs->rdstate();
         }
     };
@@ -105,7 +120,8 @@ namespace
             {
                 for (int c = 0; c < frame.channels; ++c)
                 {
-                    _ofs->write(reinterpret_cast<const char *>(&(frame.extended_data[c][i])), _bw);
+                    const char *data = reinterpret_cast<const char *>(&(frame.extended_data[c][i]));
+                    _ofs->write(data, _bw);
                 }
             }
             return *_ofs ? 0 : _ofs->rdstate();
@@ -113,18 +129,19 @@ namespace
     };
 
     /**
-     * @class FWSubSample
-     * @brief class for writing frame of non-planar samples extracted from larger width
+     * @class FWSubSampleI
+     * @brief class for writing frame of interleaved samples extracted from larger width
      */
-    class FWSubSample : public WPWFileWriterSS
+    class FWSubSampleI : public WPWFileWriterSS
     {
     public:
         using WPWFileWriterSS::WPWFileWriterSS;
 
         int write(const AVFrame &frame) override
         {
-            const int planesz = _bw * frame.nb_samples;
-            for (int i = 0; i < planesz; i += _bw)
+            const int offset = _bw - _bd;
+            const int framesz = _bw * frame.nb_samples * frame.channels;
+            for (int i = offset; i < framesz; i += _bw)
             {
                 const char *data = reinterpret_cast<const char *>(&(frame.extended_data[0][i]));
                 _ofs->write(data, _bd);
@@ -144,12 +161,14 @@ namespace
 
         int write(const AVFrame &frame) override
         {
+            const int offset = _bw - _bd;
             const int planesz = _bw * frame.nb_samples;
-            for (int i = 0; i < planesz; i += _bw)
+            for (int i = offset; i < planesz; i += _bw)
             {
                 for (int c = 0; c < frame.channels; ++c)
                 {
-                    _ofs->write(reinterpret_cast<const char *>(&(frame.extended_data[c][i])), _bd);
+                    const char *data = reinterpret_cast<const char *>(&(frame.extended_data[c][i]));
+                    _ofs->write(data, _bd);
                 }
             }
             return *_ofs ? 0 : _ofs->rdstate();
@@ -242,14 +261,14 @@ namespace
      */
     int open_file_wav(std::ofstream &ofs, const char *filepath, const WPCStreamSpec &spec)
     {
-        ofs.open(filepath, std::ios::out | std::ios::binary);
+        ofs.open(filepath, std::ios::out | std::ios::binary | std::ios::trunc);
         if (!ofs)
         {
             return ofs.rdstate();
         }
 
-        const int blockcnt = static_cast<int>(av_rescale_q(spec.duration, spec.timebase, {spec.rate, 1}));
-        const int blocksz = spec.channels * spec.bitdepth >> 3;
+        const int blockcnt = static_cast<int>(av_rescale_q(spec.duration, spec.timebase, {1, spec.rate}));
+        const int blocksz = spec.channels * get_bytedepth(spec.bitdepth);
         const int datasz = blockcnt * blocksz;
 
         const size_t fmt_idx = static_cast<size_t>(spec.format);
@@ -288,7 +307,7 @@ namespace
         write_4(ofs, static_cast<uint32_t>(chunksz_riff + padsz));
         ofs.write("WAVE", 4);
 
-        ofs.write("fmt\0", 4);
+        ofs.write("fmt ", 4);
         write_4(ofs, chunksz_fmt);
         write_2(ofs, fmt);
         write_2(ofs, spec.channels);
@@ -313,12 +332,11 @@ namespace
         write_4(ofs, datasz);
 
         // data and pad bit
-        const size_t bufsz = datasz + padsz;
+        const int bufsz = datasz + padsz;
         const char *buf = new char[bufsz]();
         ofs.write(buf, bufsz);
         ofs.seekp(-bufsz, std::ios_base::cur);
         delete buf;
-
         return ofs ? 0 : ofs.rdstate();
     }
 
@@ -343,7 +361,7 @@ namespace
             }
             else
             {
-                fw = static_cast<WPWFileWriter *>(new FWSubSample(ofs, spec));
+                fw = static_cast<WPWFileWriter *>(new FWSubSampleI(ofs, spec));
             }
         }
         else
@@ -356,11 +374,12 @@ namespace
             else
             {
 
-                fw = static_cast<WPWFileWriter *>(new FWFullSample(ofs, spec));
+                fw = static_cast<WPWFileWriter *>(new FWFullSampleI(ofs, spec));
             }
         }
         return fw;
     }
+
 }
 
 namespace whfa::pcm
@@ -407,6 +426,7 @@ namespace whfa::pcm
         if (!_ctxt->get_stream_spec(_spec))
         {
             set_state_stop(Worker::FORMATINVAL | Worker::CODECINVAL);
+            return false;
         }
 
         int rv = 0;
@@ -429,7 +449,7 @@ namespace whfa::pcm
                 _ofs.close();
             }
         }
-        return err;
+        return !err;
     }
 
     void Writer::close()

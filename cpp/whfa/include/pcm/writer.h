@@ -19,7 +19,6 @@ namespace whfa::pcm
      * will write to only one sink at a time (potentially changed later)
      * a context should only have one writer/player, as it consumes frames destructively from the queue
      *
-     * @todo: utilize queue pop timeouts? period determined from sample rate?
      * @todo: try creating common base class for Player and Writer, multithreaded processing of each poppped frame
      */
     class Writer : public Context::Worker

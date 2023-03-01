@@ -25,6 +25,11 @@ namespace whfa::pcm
     class Player : public Context::Worker
     {
     public:
+        /// @brief default enable/disable libasound resampling
+        static constexpr bool DEF_RESAMPLE = false;
+        /// @brief default latency for libasound playback in microseconds
+        static constexpr unsigned int DEF_LATENCY_US = 500000;
+        
         /**
          * @class whfa::pcm::Player::DeviceWriter
          * @brief small class to handle efficient varitations of writing to device
@@ -56,8 +61,6 @@ namespace whfa::pcm
         protected:
             /// @brief libasound PCM device handle
             snd_pcm_t *_dev;
-            /// @brief bytewidth of individual channel sample
-            const int _bw;
         };
 
         /**
@@ -90,9 +93,11 @@ namespace whfa::pcm
          *
          * drains current playback and sets hardware and software parameters for device
          *
+         * @param resample enable/disable libasound resampling
+         * @param latency_us latency for libasound playback in microseconds
          * @return false if failure or no device opened
          */
-        bool configure();
+        bool configure(bool resample = DEF_RESAMPLE, unsigned int latency_us = DEF_LATENCY_US);
 
         /**
          * @brief close open device

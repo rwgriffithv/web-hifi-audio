@@ -39,7 +39,10 @@ namespace
      */
     void free_packet(AVPacket *packet)
     {
-        av_packet_free(&packet);
+        if (packet != nullptr)
+        {
+            av_packet_free(&packet);
+        }
     }
 
     /**
@@ -49,7 +52,10 @@ namespace
      */
     void free_frame(AVFrame *frame)
     {
-        av_frame_free(&frame);
+        if (frame != nullptr)
+        {
+            av_frame_free(&frame);
+        }
     }
 
     /**
@@ -60,8 +66,14 @@ namespace
      */
     inline void free_context(AVFormatContext *&format, AVCodecContext *&codec, int &stream_idx)
     {
-        free_format(format);
-        free_codec(codec);
+        if (codec != nullptr)
+        {
+            free_codec(codec);
+        }
+        if (format != nullptr)
+        {
+            free_format(format);
+        }
         stream_idx = -1;
     }
 }
@@ -102,12 +114,12 @@ namespace whfa::pcm
      * whfa::pcm::Context public methods
      */
 
-    Context::Context(size_t packet_queue_capacity, size_t frame_queue_capacity)
+    Context::Context(size_t pkt_qcap, size_t frm_qcap)
         : _fmt_ctxt(nullptr),
           _cdc_ctxt(nullptr),
           _stm_idx(-1),
-          _pkt_q(packet_queue_capacity, free_packet),
-          _frm_q(frame_queue_capacity, free_frame)
+          _pkt_q(pkt_qcap, free_packet),
+          _frm_q(frm_qcap, free_frame)
     {
     }
 
@@ -126,7 +138,7 @@ namespace whfa::pcm
         _pkt_q.flush();
 
         int rv;
-        if ((rv = !avformat_open_input(&_fmt_ctxt, url, nullptr, nullptr)) != 0)
+        if ((rv = avformat_open_input(&_fmt_ctxt, url, nullptr, nullptr)) != 0)
         {
             return rv;
         }
