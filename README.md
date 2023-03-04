@@ -10,6 +10,9 @@ near-term todo:
 - web API for local file support
 - web API for remote file support
 - Kotlin Android application to serve or select files w/ playback control
+- TCP connection thread for streaming file
+- TCP connection thread for managing state
+- parallel multipurpose processing of frames from queue (e.g. player & writer)
 
 needs test:
 

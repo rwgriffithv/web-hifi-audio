@@ -33,6 +33,25 @@ namespace
     }
 
     /**
+     * @brief frees format and codec context, sets to nullptrs and invalid stream index
+     * @param[out] format format context to free and set to nullptr
+     * @param[out] codec codec context to free and set to nullptr
+     * @param[out] stream_idx stream index to set to -1
+     */
+    inline void free_context(AVFormatContext *&format, AVCodecContext *&codec, int &stream_idx)
+    {
+        if (codec != nullptr)
+        {
+            free_codec(codec);
+        }
+        if (format != nullptr)
+        {
+            free_format(format);
+        }
+        stream_idx = -1;
+    }
+
+    /**
      * @brief used when flushing context packet queue
      *
      * @param packet libav packet to free
@@ -56,25 +75,6 @@ namespace
         {
             av_frame_free(&frame);
         }
-    }
-
-    /**
-     * @brief frees format and codec context, sets to nullptrs and invalid stream index
-     * @param[out] format format context to free and set to nullptr
-     * @param[out] codec codec context to free and set to nullptr
-     * @param[out] stream_idx stream index to set to -1
-     */
-    inline void free_context(AVFormatContext *&format, AVCodecContext *&codec, int &stream_idx)
-    {
-        if (codec != nullptr)
-        {
-            free_codec(codec);
-        }
-        if (format != nullptr)
-        {
-            free_format(format);
-        }
-        stream_idx = -1;
     }
 }
 

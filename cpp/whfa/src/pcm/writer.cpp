@@ -20,8 +20,8 @@ namespace
 
     /// @brief convenience alias for stream spec
     using WPCStreamSpec = whfa::pcm::Context::StreamSpec;
-    /// @brief convenience alias for file writer
-    using WPWFileWriter = whfa::pcm::Writer::FileWriter;
+    /// @brief convenience alias for frame handler
+    using WPFrameHandler = whfa::pcm::FrameHandler;
     /// @brief array type for wav format mapping
     using WavFormatMap = std::array<uint16_t, __NUM_AVFMTS>;
 
@@ -69,13 +69,46 @@ namespace
     }
 
     /**
+     * @class FileWriter
+     * @brief small class to handle efficient varitations of writing to file
+     */
+    class FileWriter : public WPFrameHandler
+    {
+    public:
+        /**
+         * @brief constructor
+         *
+         * @param ofs open output file stream to write to
+         * @param spec context stream specification
+         */
+        FileWriter(std::ofstream &ofs, const WPCStreamSpec &spec)
+            : _ofs(&ofs),
+              _bw(av_get_bytes_per_sample(spec.format))
+        {
+        }
+
+        /**
+         * @brief destructor
+         */
+        virtual ~FileWriter()
+        {
+        }
+
+    protected:
+        /// @brief output file stream
+        std::ofstream *_ofs;
+        /// @brief bytewidth of individual channel sample
+        const int _bw;
+    };
+
+    /**
      * @class WPWFileWriterSS
      * @brief base class for file writers handling subsample data
      */
-    class WPWFileWriterSS : public WPWFileWriter
+    class FileWriterSS : public FileWriter
     {
     public:
-        WPWFileWriterSS(std::ofstream &ofs, const WPCStreamSpec &spec)
+        FileWriterSS(std::ofstream &ofs, const WPCStreamSpec &spec)
             : FileWriter(ofs, spec),
               _bd(get_bytedepth(spec.bitdepth))
         {
@@ -90,12 +123,12 @@ namespace
      * @class FWFullSampleI
      * @brief class for writing full frame of interleaved samples
      */
-    class FWFullSampleI : public WPWFileWriter
+    class FWFullSampleI : public FileWriter
     {
     public:
         using FileWriter::FileWriter;
 
-        int write(const AVFrame &frame) override
+        int handle(const AVFrame &frame) override
         {
             const std::streamsize framesz = _bw * frame.nb_samples * frame.channels;
             const char *data = reinterpret_cast<const char *>(frame.extended_data[0]);
@@ -108,12 +141,12 @@ namespace
      * @class FWFullSampleP
      * @brief class for writing full frame of planar samples
      */
-    class FWFullSampleP : public WPWFileWriter
+    class FWFullSampleP : public FileWriter
     {
     public:
         using FileWriter::FileWriter;
 
-        int write(const AVFrame &frame) override
+        int handle(const AVFrame &frame) override
         {
             const int planesz = _bw * frame.nb_samples;
             for (int i = 0; i < planesz; i += _bw)
@@ -132,12 +165,12 @@ namespace
      * @class FWSubSampleI
      * @brief class for writing frame of interleaved samples extracted from larger width
      */
-    class FWSubSampleI : public WPWFileWriterSS
+    class FWSubSampleI : public FileWriterSS
     {
     public:
-        using WPWFileWriterSS::WPWFileWriterSS;
+        using FileWriterSS::FileWriterSS;
 
-        int write(const AVFrame &frame) override
+        int handle(const AVFrame &frame) override
         {
             const int offset = _bw - _bd;
             const int framesz = _bw * frame.nb_samples * frame.channels;
@@ -154,12 +187,12 @@ namespace
      * @class FWSubSampleP
      * @brief class for wirting frame of planar samples extracted from larger width
      */
-    class FWSubSampleP : public WPWFileWriterSS
+    class FWSubSampleP : public FileWriterSS
     {
     public:
-        using WPWFileWriterSS::WPWFileWriterSS;
+        using FileWriterSS::FileWriterSS;
 
-        int write(const AVFrame &frame) override
+        int handle(const AVFrame &frame) override
         {
             const int offset = _bw - _bd;
             const int planesz = _bw * frame.nb_samples;
@@ -181,8 +214,7 @@ namespace
      * @param ofs open output file stream
      * @param u 2 byte value to write
      */
-    inline void
-    write_2(std::ofstream &ofs, const uint16_t &u)
+    inline void write_2(std::ofstream &ofs, const uint16_t &u)
     {
         ofs.write(reinterpret_cast<const char *>(&u), 2);
     }
@@ -347,21 +379,21 @@ namespace
      * @param spec stream specification
      * @return file writer, nullptr on invalid/unsupported spec
      */
-    WPWFileWriter *get_file_writer(std::ofstream &ofs, const WPCStreamSpec &spec)
+    WPFrameHandler *get_file_writer(std::ofstream &ofs, const WPCStreamSpec &spec)
     {
         const int bw = av_get_bytes_per_sample(spec.format) << 3;
         const bool subsample = spec.bitdepth < bw;
         const bool planar = av_sample_fmt_is_planar(spec.format) == 1;
-        WPWFileWriter *fw = nullptr;
+        WPFrameHandler *fw = nullptr;
         if (subsample)
         {
             if (planar)
             {
-                fw = static_cast<WPWFileWriter *>(new FWSubSampleP(ofs, spec));
+                fw = static_cast<WPFrameHandler *>(new FWSubSampleP(ofs, spec));
             }
             else
             {
-                fw = static_cast<WPWFileWriter *>(new FWSubSampleI(ofs, spec));
+                fw = static_cast<WPFrameHandler *>(new FWSubSampleI(ofs, spec));
             }
         }
         else
@@ -369,12 +401,12 @@ namespace
             if (planar)
             {
 
-                fw = static_cast<WPWFileWriter *>(new FWFullSampleP(ofs, spec));
+                fw = static_cast<WPFrameHandler *>(new FWFullSampleP(ofs, spec));
             }
             else
             {
 
-                fw = static_cast<WPWFileWriter *>(new FWFullSampleI(ofs, spec));
+                fw = static_cast<WPFrameHandler *>(new FWFullSampleI(ofs, spec));
             }
         }
         return fw;
@@ -384,18 +416,6 @@ namespace
 
 namespace whfa::pcm
 {
-
-    /**
-     * whfa::pcm::Writer::FileWriter public methods
-     */
-
-    Writer::FileWriter::FileWriter(std::ofstream &ofs, const Context::StreamSpec &spec)
-        : _ofs(&ofs),
-          _bw(av_get_bytes_per_sample(spec.format))
-    {
-    }
-
-    Writer::FileWriter::~FileWriter() {}
 
     /**
      * whfa::pcm::Writer public methods
@@ -459,6 +479,7 @@ namespace whfa::pcm
         {
             _ofs.close();
         }
+        set_state_stop();
     }
 
     /**
@@ -492,7 +513,7 @@ namespace whfa::pcm
             return;
         }
 
-        const int rv = _writer->write(*frame);
+        const int rv = _writer->handle(*frame);
         set_state_timestamp(frame->pts);
         av_frame_free(&frame);
         if (rv != 0)

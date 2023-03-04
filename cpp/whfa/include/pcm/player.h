@@ -5,6 +5,7 @@
 #pragma once
 
 #include "pcm/context.h"
+#include "pcm/framehandler.h"
 
 #include <alsa/asoundlib.h>
 
@@ -19,8 +20,7 @@ namespace whfa::pcm
      * will write to only one sink at a time (potentially changed later)
      * a context should only have one writer/player, as it consumes frames destructively from the queue
      *
-     * @todo: utilize queue pop timeouts? period determined from sample rate?
-     * @todo: try creating common base class for Player and Writer, multithreaded processing of each poppped frame
+     * @todo: common base class for Player and Writer, multipurpose parallel processing of each poppped frame
      */
     class Player : public Context::Worker
     {
@@ -29,39 +29,6 @@ namespace whfa::pcm
         static constexpr bool DEF_RESAMPLE = false;
         /// @brief default latency for libasound playback in microseconds
         static constexpr unsigned int DEF_LATENCY_US = 500000;
-        
-        /**
-         * @class whfa::pcm::Player::DeviceWriter
-         * @brief small class to handle efficient varitations of writing to device
-         */
-        class DeviceWriter
-        {
-        public:
-            /**
-             * @brief constructor
-             *
-             * @param dev libasound PCM device handle
-             * @param spec context stream specification
-             */
-            DeviceWriter(snd_pcm_t *dev, const Context::StreamSpec &spec);
-
-            /**
-             * @brief destructor
-             */
-            virtual ~DeviceWriter();
-
-            /**
-             * @brief write frame to device
-             *
-             * @param frame libav frame to write
-             * @return 0 on success, error code on failure
-             */
-            virtual int write(const AVFrame &frame) = 0;
-
-        protected:
-            /// @brief libasound PCM device handle
-            snd_pcm_t *_dev;
-        };
 
         /**
          * @brief constructor
@@ -100,13 +67,13 @@ namespace whfa::pcm
         bool configure(bool resample = DEF_RESAMPLE, unsigned int latency_us = DEF_LATENCY_US);
 
         /**
-         * @brief close open device
+         * @brief close open device and stop writing thread
          */
         void close();
 
     protected:
         /**
-         * @brief write queued frames to opened destination
+         * @brief write queued frames to opened device
          *
          * upon failure, pauses and sets error state without altering context or closing
          */
@@ -117,7 +84,7 @@ namespace whfa::pcm
         /// @brief context stream specification
         Context::StreamSpec _spec;
         /// @brief class to write to device with
-        DeviceWriter *_writer;
+        FrameHandler *_writer;
     };
 
 }

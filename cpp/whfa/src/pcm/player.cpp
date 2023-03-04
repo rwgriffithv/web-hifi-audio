@@ -14,8 +14,8 @@ namespace
 
     /// @brief convience alias for stream spec
     using WPCStreamSpec = whfa::pcm::Context::StreamSpec;
-    /// @brief convience alias for device writer
-    using WPPDeviceWriter = whfa::pcm::Player::DeviceWriter;
+    /// @brief convenience alias for frame handler
+    using WPFrameHandler = whfa::pcm::FrameHandler;
     /// @brief array type for libasound format mapping
     using SndFormatMap = std::array<snd_pcm_format_t, __NUM_AVFMTS>;
 
@@ -50,10 +50,40 @@ namespace
     constexpr const SndFormatMap __SNDFMT_MAP = constSampleFormatMap();
 
     /**
+     * @class DeviceWriter
+     * @brief small class to handle efficient varitations of writing to device
+     */
+    class DeviceWriter : public WPFrameHandler
+    {
+    public:
+        /**
+         * @brief constructor
+         *
+         * @param dev libasound PCM device handle
+         * @param spec context stream specification
+         */
+        DeviceWriter(snd_pcm_t *dev, const WPCStreamSpec &spec)
+            : _dev(dev)
+        {
+        }
+
+        /**
+         * @brief destructor
+         */
+        virtual ~DeviceWriter()
+        {
+        }
+
+    protected:
+        /// @brief libasound PCM device handle
+        snd_pcm_t *_dev;
+    };
+
+    /**
      * @class DWInterleaved
      * @brief class for writing full frame of non-planar samples
      */
-    class DWInterleaved : public WPPDeviceWriter
+    class DWInterleaved : public DeviceWriter
     {
     public:
         DWInterleaved(snd_pcm_t *dev, const WPCStreamSpec &spec)
@@ -62,7 +92,7 @@ namespace
         {
         }
 
-        int write(const AVFrame &frame) override
+        int handle(const AVFrame &frame) override
         {
             int cnt = 0;
             while (cnt < frame.nb_samples)
@@ -91,7 +121,7 @@ namespace
      * @class DWPlanar
      * @brief class for writing full frame of planar samples
      */
-    class DWPlanar : public WPPDeviceWriter
+    class DWPlanar : public DeviceWriter
     {
     public:
         DWPlanar(snd_pcm_t *dev, const WPCStreamSpec &spec)
@@ -106,7 +136,7 @@ namespace
             delete _pbuf;
         }
 
-        int write(const AVFrame &frame) override
+        int handle(const AVFrame &frame) override
         {
             int cnt = 0;
             while (cnt < frame.nb_samples)
@@ -187,17 +217,17 @@ namespace
      * @param spec stream specification
      * @return device writer, nullptr on invalid/unsupported spec
      */
-    WPPDeviceWriter *get_dev_writer(snd_pcm_t *dev, const WPCStreamSpec &spec)
+    WPFrameHandler *get_dev_writer(snd_pcm_t *dev, const WPCStreamSpec &spec)
     {
         const bool planar = av_sample_fmt_is_planar(spec.format) == 1;
-        WPPDeviceWriter *dw = nullptr;
+        WPFrameHandler *dw = nullptr;
         if (planar)
         {
-            dw = static_cast<WPPDeviceWriter *>(new DWPlanar(dev, spec));
+            dw = static_cast<WPFrameHandler *>(new DWPlanar(dev, spec));
         }
         else
         {
-            dw = static_cast<WPPDeviceWriter *>(new DWInterleaved(dev, spec));
+            dw = static_cast<WPFrameHandler *>(new DWInterleaved(dev, spec));
         }
         return dw;
     }
@@ -206,17 +236,6 @@ namespace
 
 namespace whfa::pcm
 {
-
-    /**
-     * whfa::pcm::Player::DeviceWriter public methods
-     */
-
-    Player::DeviceWriter::DeviceWriter(snd_pcm_t *dev, const Context::StreamSpec &spec)
-        : _dev(dev)
-    {
-    }
-
-    Player::DeviceWriter::~DeviceWriter() {}
 
     /**
      * whfa::pcm::Player public methods
@@ -332,7 +351,7 @@ namespace whfa::pcm
             return;
         }
 
-        const int rv = _writer->write(*frame);
+        const int rv = _writer->handle(*frame);
         set_state_timestamp(frame->pts);
         av_frame_free(&frame);
         if (rv != 0)
