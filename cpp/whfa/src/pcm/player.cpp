@@ -67,13 +67,6 @@ namespace
         {
         }
 
-        /**
-         * @brief destructor
-         */
-        virtual ~DeviceWriter()
-        {
-        }
-
     protected:
         /// @brief libasound PCM device handle
         snd_pcm_t *_dev;

@@ -87,13 +87,6 @@ namespace
         {
         }
 
-        /**
-         * @brief destructor
-         */
-        virtual ~FileWriter()
-        {
-        }
-
     protected:
         /// @brief output file stream
         std::ofstream *_ofs;
