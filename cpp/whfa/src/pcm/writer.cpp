@@ -101,6 +101,12 @@ namespace
     class FileWriterSS : public FileWriter
     {
     public:
+        /**
+         * @brief constructor, setting bytedepth for handling subsamples
+         *
+         * @param ofs open output file stream to write to
+         * @param spec context stream specification
+         */
         FileWriterSS(std::ofstream &ofs, const WPCStreamSpec &spec)
             : FileWriter(ofs, spec),
               _bd(get_bytedepth(spec.bitdepth))
@@ -121,6 +127,12 @@ namespace
     public:
         using FileWriter::FileWriter;
 
+        /**
+         * @brief write all interleaved full bitwidth samples in frame to file
+         *
+         * @param frame libav frame to handle
+         * @return 0 on success, error code on failure
+         */
         int handle(const AVFrame &frame) override
         {
             const std::streamsize framesz = _bw * frame.nb_samples * frame.channels;
@@ -139,6 +151,12 @@ namespace
     public:
         using FileWriter::FileWriter;
 
+        /**
+         * @brief write all planar full bitwidth samples in frame to file
+         *
+         * @param frame libav frame to handle
+         * @return 0 on success, error code on failure
+         */
         int handle(const AVFrame &frame) override
         {
             const int planesz = _bw * frame.nb_samples;
@@ -163,6 +181,12 @@ namespace
     public:
         using FileWriterSS::FileWriterSS;
 
+        /**
+         * @brief write all interleaved sub-bitwidth samples in frame to file
+         *
+         * @param frame libav frame to handle
+         * @return 0 on success, error code on failure
+         */
         int handle(const AVFrame &frame) override
         {
             const int offset = _bw - _bd;
@@ -185,6 +209,12 @@ namespace
     public:
         using FileWriterSS::FileWriterSS;
 
+        /**
+         * @brief write all planar sub-bitwidth samples in frame to file
+         *
+         * @param frame libav frame to handle
+         * @return 0 on success, error code on failure
+         */
         int handle(const AVFrame &frame) override
         {
             const int offset = _bw - _bd;

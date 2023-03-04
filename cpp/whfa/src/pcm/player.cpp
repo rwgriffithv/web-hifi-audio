@@ -60,9 +60,8 @@ namespace
          * @brief constructor
          *
          * @param dev libasound PCM device handle
-         * @param spec context stream specification
          */
-        DeviceWriter(snd_pcm_t *dev, const WPCStreamSpec &spec)
+        DeviceWriter(snd_pcm_t *dev)
             : _dev(dev)
         {
         }
@@ -79,12 +78,24 @@ namespace
     class DWInterleaved : public DeviceWriter
     {
     public:
+        /**
+         * @brief constructor
+         *
+         * @param dev libasound PCM device handle
+         * @param spec context stream specification
+         */
         DWInterleaved(snd_pcm_t *dev, const WPCStreamSpec &spec)
-            : DeviceWriter(dev, spec),
+            : DeviceWriter(dev),
               _ssz(av_get_bytes_per_sample(spec.format) * spec.channels)
         {
         }
 
+        /**
+         * @brief write all interleaved samples in frame to device
+         *
+         * @param frame libav frame to handle
+         * @return 0 on success, error code on failure
+         */
         int handle(const AVFrame &frame) override
         {
             int cnt = 0;
@@ -117,18 +128,33 @@ namespace
     class DWPlanar : public DeviceWriter
     {
     public:
+        /**
+         * @brief constructor
+         *
+         * @param dev libasound PCM device handle
+         * @param spec context stream specification
+         */
         DWPlanar(snd_pcm_t *dev, const WPCStreamSpec &spec)
-            : DeviceWriter(dev, spec),
+            : DeviceWriter(dev),
               _bw(av_get_bytes_per_sample(spec.format)),
               _pbuf(new void *[spec.channels])
         {
         }
 
+        /**
+         * @brief destructor, free allocated buffer of planar channel pointers
+         */
         ~DWPlanar()
         {
             delete _pbuf;
         }
 
+        /**
+         * @brief write all planar samples in frame to device
+         *
+         * @param frame libav frame to handle
+         * @return 0 on success, error code on failure
+         */
         int handle(const AVFrame &frame) override
         {
             int cnt = 0;
