@@ -7,18 +7,16 @@ all "libav" references refer to the FFmpeg library system libav
 
 near-term todo:
 
-- web API for local file support
-- web API for remote file support
+- TCP connection thread for receiving streamed file
+- TCP connection thread for receiving and updating streaming state
+- network API to allow for remote selection of local files
 - Kotlin Android application to serve or select files w/ playback control
-- TCP connection thread for streaming file
-- TCP connection thread for managing state
 - parallel multipurpose processing of frames from queue (e.g. player & writer)
 
 needs test:
 
 - sound card device writing
 - seeking while reading
-- libav networked stream handling
 
 dependencies:
 
