@@ -1,5 +1,5 @@
 /**
- * @file writer.h
+ * @file pcm/writer.h
  * @author Robert Griffith
  */
 #pragma once

@@ -1,5 +1,5 @@
 /**
- * @file decoder.h
+ * @file pcm/decoder.h
  * @author Robert Griffith
  */
 #pragma once

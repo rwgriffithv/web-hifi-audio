@@ -1,5 +1,5 @@
 /**
- * @file threader.cpp
+ * @file util/threader.cpp
  * @author Robert Griffith
  */
 #include "util/threader.h"
@@ -8,23 +8,32 @@ namespace whfa::util
 {
 
     /**
+     * whfa::util::Threader::StateHandler public methods
+     */
+
+    Threader::StateHandler::~StateHandler()
+    {
+    }
+
+    /**
      * whfa::util::Threader public methods
      */
 
     Threader::~Threader()
     {
-        std::unique_lock<std::mutex> lock(_mtx);
-        _terminate = true;
-        lock.unlock();
+        {
+            std::lock_guard<std::mutex> lock(_mtx);
+            _terminate = true;
+        }
         _cond.notify_one();
         _thread.join();
     }
 
-    void Threader::start(StateCallback callback)
+    void Threader::start(StateHandler *handler)
     {
         {
             std::lock_guard<std::mutex> lock(_mtx);
-            _callback = callback;
+            _handler = handler;
             set_state_start();
         }
         _cond.notify_one();
@@ -56,7 +65,7 @@ namespace whfa::util
         : _state({.run = false,
                   .error = 0,
                   .timestamp = 0}),
-          _callback(nullptr),
+          _handler(nullptr),
           _terminate(false),
           _thread(&Threader::execute_loop, this)
     {
@@ -67,9 +76,8 @@ namespace whfa::util
         do
         {
             std::unique_lock<std::mutex> lock(_mtx);
-            _cond.wait(
-                lock, [=]
-                { return _state.run || _terminate; });
+            _cond.wait(lock, [=]
+                       { return _state.run || _terminate; });
             // entire loop body remains locked
             if (_terminate)
             {
@@ -92,9 +100,9 @@ namespace whfa::util
         _state.run = true;
         _state.error = 0;
         _state.timestamp = 0;
-        if (_callback != nullptr)
+        if (_handler != nullptr)
         {
-            _callback(_state);
+            _handler->handle(_state);
         }
     }
 
@@ -103,9 +111,9 @@ namespace whfa::util
         _state.run = false;
         _state.timestamp = 0;
         _state.error = error;
-        if (_callback != nullptr)
+        if (_handler != nullptr)
         {
-            _callback(_state);
+            _handler->handle(_state);
         }
     }
 
@@ -113,18 +121,18 @@ namespace whfa::util
     {
         _state.run = false;
         _state.error = error;
-        if (_callback != nullptr)
+        if (_handler != nullptr)
         {
-            _callback(_state);
+            _handler->handle(_state);
         }
     }
 
     void Threader::set_state_error(int error)
     {
         _state.error = error;
-        if (_callback != nullptr)
+        if (_handler != nullptr)
         {
-            _callback(_state);
+            _handler->handle(_state);
         }
     }
 

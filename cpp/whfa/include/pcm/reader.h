@@ -1,7 +1,7 @@
 /**
- * @file reader.h
+ * @file pcm/reader.h
  * @author Robert Griffith
-*/
+ */
 #pragma once
 
 #include "pcm/context.h"

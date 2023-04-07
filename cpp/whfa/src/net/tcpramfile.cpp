@@ -1,80 +1,61 @@
 /**
- * @file tcpramfile.cpp
+ * @file net/tcpramfile.cpp
  * @author Robert Griffith
  */
 #include "net/tcpramfile.h"
+#include "util/error.h"
 
-#include <arpa/inet.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <cstring>
+
+namespace wu = whfa::util;
 
 namespace
 {
 
+    /// @brief convenience alias for connection
+    using WNTCPConnection = whfa::net::TCPConnection;
+
     /**
      * @brief close socket and free allocated memory
      *
-     * @param[out] fd file descriptor to close, -1 = not open
+     * @param[out] conn connection to close
      * @param[out] data byte buffer to free and set to nullptr
-     * @return 0 on success, error value otherwise
      */
-    inline int close_ramfile(int &fd, uint8_t *&data)
+    inline void close_ramfile(WNTCPConnection &conn, uint8_t *&data)
     {
-        int rv = 0;
-        if (fd >= 0)
-        {
-            rv = close(fd);
-            fd = -1;
-        }
+        conn.close();
         if (data != nullptr)
         {
             delete data;
             data = nullptr;
         }
-        return rv;
     }
 
-    bool recv_all(int fd, uint8_t *data, size_t &size, int timeout_ms)
+    /**
+     * @brief receive file size and initialize file data buffer
+     *
+     * @param[out] conn connection to use
+     * @param[out] data byte buffer to create
+     * @param[out] fsz file size in bytes
+     * @param[out] rd_pos read position in file in bytes
+     * @param[out] rv_pos receive position in file in bytes
+     * @return true on success
+     */
+    inline bool init_ramfile(
+        WNTCPConnection &conn,
+        uint8_t *&data,
+        uint64_t &fsz,
+        uint64_t &rd_pos,
+        uint64_t &rv_pos)
     {
-        int rv;
-        struct pollfd pfd
+        if (!conn.recv(&fsz, sizeof(fsz)))
         {
-            .fd = fd,
-            .events = 0
-        };
-        while (size > 0)
-        {
-            // polling with timeout so fd can be closed
-            // TODO: poll and everything should aquire filemtx and release before next poll
-            // TODO: this gives fd a chance to be closed
-
-            // TODO: loop body can be put into execute_loop_body
-            // TODO: won't need extra mutex, dont' need to read exactly "size" bytes, just recv and write to buffer
-            rv = poll(&pfd, 1, timeout_ms);
-            if (rv > 0)
-            {
-                int res = recv(fd, data, size, MSG_DONTWAIT);
-                if (res > 0)
-                {
-                    data += res;
-                    size -= res;
-                }
-                else if (res == 0)
-                {
-                    // EOF
-                    return true;
-                }
-                else if ((errno != EAGAIN) && (errno != EWOULDBLOCK) && (errno != EINTR))
-                {
-                    return false;
-                }
-            }
-            else if (rv < 0)
-            {
-                return false;
-            }
+            close_ramfile(conn, data);
+            return false;
         }
+        data = new uint8_t[fsz];
+        rd_pos = 0;
+        rv_pos = 0;
         return true;
     }
 
@@ -87,10 +68,12 @@ namespace whfa::net
      * whfa::net::TCPRAMFile public methods
      */
 
-    TCPRAMFile::TCPRAMFile(size_t blocksz)
-        : _fd(-1),
-          _blocksz(blocksz),
-          _data(nullptr)
+    TCPRAMFile::TCPRAMFile(uint64_t blocksz)
+        : _blocksz(blocksz),
+          _data(nullptr),
+          _filesz(0),
+          _read_pos(0),
+          _recv_pos(0)
     {
     }
 
@@ -102,49 +85,118 @@ namespace whfa::net
     bool TCPRAMFile::open(const char *addr, uint16_t port)
     {
         std::lock_guard<std::mutex> lk(_mtx);
-        std::lock_guard<std::mutex> f_lk(_filemtx);
-        close_ramfile(_fd, _data);
+        std::lock_guard<std::mutex> rd_lk(_read_mtx);
+        close_ramfile(_conn, _data);
+        bool success = false;
+        if (!_conn.connect(addr, port))
+        {
+            set_state_stop(wu::ENET_CONNFAIL);
+        }
+        else if (!init_ramfile(_conn, _data, _filesz, _read_pos, _recv_pos))
+        {
+            set_state_stop(wu::ENET_TXFAIL);
+        }
+        else
+        {
+            success = true;
+        }
+        return success;
+    }
 
-        struct sockaddr_in sa;
-        sa.sin_family = AF_INET;
-        sa.sin_port = htons(port);
-        if (inet_pton(AF_INET, addr, &sa.sin_addr) <= 0)
+    bool TCPRAMFile::open(uint16_t port)
+    {
+        std::lock_guard<std::mutex> lk(_mtx);
+        std::lock_guard<std::mutex> rd_lk(_read_mtx);
+        close_ramfile(_conn, _data);
+        bool success = false;
+        if (!_conn.accept(port))
         {
-            set_state_stop(errno);
-            return false;
+            set_state_stop(wu::ENET_CONNFAIL);
         }
+        else if (!init_ramfile(_conn, _data, _filesz, _read_pos, _recv_pos))
+        {
+            set_state_stop(wu::ENET_TXFAIL);
+        }
+        else
+        {
+            success = true;
+        }
+        return success;
+    }
 
-        if ((_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    uint64_t TCPRAMFile::read(uint8_t *buf, uint64_t size)
+    {
+        std::lock_guard<std::mutex> rd_lk(_read_mtx);
+        size = std::min(_filesz - _read_pos, size);
+        if (_data == nullptr || size == 0)
         {
-            set_state_stop(errno);
+            return 0;
+        }
+        std::unique_lock<std::mutex> rv_lk(_recv_mtx);
+        _recv_cond.wait(rv_lk, [=]
+                        { return _recv_pos - _read_pos >= size; });
+        rv_lk.unlock();
+        memcpy(buf, _data, size);
+        _read_pos += size;
+        return size;
+    }
+
+    bool TCPRAMFile::seek(int64_t offset, int whence)
+    {
+        std::lock_guard<std::mutex> rd_lk(_read_mtx);
+        if (_data == nullptr)
+        {
             return false;
         }
-        if (connect(_fd, reinterpret_cast<sockaddr *>(&sa), sizeof(sa)) < 0)
+        const bool neg = offset < 0;
+        const int64_t signed_mag = neg ? -offset : offset;
+        uint64_t mag;
+        memcpy(&mag, &signed_mag, sizeof(mag));
+        uint64_t base;
+        switch (whence)
         {
-            set_state_stop(errno);
-            close_ramfile(_fd, _data);
+        case SEEK_SET:
+            base = 0;
+            break;
+        case SEEK_CUR:
+            base = _read_pos;
+            break;
+        case SEEK_END:
+            base = _filesz;
+            break;
+        default:
             return false;
         }
-        /// @todo: receive file size (required for seeking)
-        /// @todo: send block size
+        const uint64_t pos = neg ? base - mag : base + mag;
+        if ((neg && pos > base) || (!neg && pos < base))
+        {
+            return false;
+        }
+        std::unique_lock<std::mutex> rv_lk(_recv_mtx);
+        _recv_cond.wait(rv_lk, [=]
+                        { return _recv_pos >= pos; });
+        rv_lk.unlock();
+        _read_pos = pos;
         return true;
     }
 
-    int TCPRAMFile::read(uint8_t *buf, size_t size)
-    {
-        /// @todo
-        return 0;
-    }
-    bool TCPRAMFile::seek(int64_t offset, int whence)
-    {
-        /// @todo
-        return false;
-    }
     void TCPRAMFile::close()
     {
-        std::lock_guard<std::mutex> f_lk(_filemtx);
-        const int rv = close_ramfile(_fd, _data);
-        set_state_stop(rv);
+        std::lock_guard<std::mutex> rd_lk(_read_mtx);
+        close_ramfile(_conn, _data);
+        set_state_stop();
+    }
+
+    uint64_t TCPRAMFile::get_blocksize()
+    {
+        std::lock_guard<std::mutex> rd_lk(_read_mtx);
+        return _blocksz;
+    }
+
+    uint64_t TCPRAMFile::get_filesize()
+    {
+        std::lock_guard<std::mutex> rd_lk(_read_mtx);
+        return _filesz;
     }
 
     /**
@@ -153,6 +205,22 @@ namespace whfa::net
 
     void TCPRAMFile::execute_loop_body()
     {
-        /// @todo
+        const uint64_t sz = std::min(_blocksz, _filesz - _recv_pos);
+        if (_data == nullptr || sz == 0)
+        {
+            set_state_stop();
+        }
+        else if (_conn.recv(&(_data[_recv_pos]), sz))
+        {
+            {
+                std::lock_guard<std::mutex> rv_lk(_recv_mtx);
+                _recv_pos += sz;
+            }
+            _recv_cond.notify_one();
+        }
+        else
+        {
+            set_state_pause(errno);
+        }
     }
 }

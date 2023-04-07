@@ -1,8 +1,11 @@
 /**
- * @file reader.cpp
+ * @file pcm/reader.cpp
  * @author Robert Griffith
  */
 #include "pcm/reader.h"
+#include "util/error.h"
+
+namespace wu = whfa::util;
 
 namespace
 {
@@ -39,7 +42,7 @@ namespace whfa::pcm
         std::mutex *fmt_mtx = _ctxt->get_format(fmt_ctxt, s_idx);
         if (fmt_mtx == nullptr)
         {
-            err = Worker::FORMATINVAL;
+            err = wu::EPCM_FORMATINVAL;
             stop = true;
         }
         else
@@ -63,7 +66,7 @@ namespace whfa::pcm
                 std::mutex *cdc_mtx = _ctxt->get_codec(cdc_ctxt);
                 if (cdc_mtx == nullptr)
                 {
-                    err = Worker::CODECINVAL;
+                    err = wu::EPCM_CODECINVAL;
                     stop = true;
                 }
                 else
@@ -100,7 +103,7 @@ namespace whfa::pcm
         std::mutex *fmt_mtx = _ctxt->get_format(fmt_ctxt, s_idx);
         if (fmt_mtx == nullptr)
         {
-            err = Worker::FORMATINVAL;
+            err = wu::EPCM_FORMATINVAL;
             stop = true;
         }
         else
@@ -123,7 +126,7 @@ namespace whfa::pcm
                 std::mutex *cdc_mtx = _ctxt->get_codec(cdc_ctxt);
                 if (cdc_mtx == nullptr)
                 {
-                    err = Worker::CODECINVAL;
+                    err = wu::EPCM_CODECINVAL;
                     stop = true;
                 }
                 else
@@ -163,7 +166,7 @@ namespace whfa::pcm
         fmt_mtx = _ctxt->get_format(fmt_ctxt, s_idx);
         if (fmt_mtx == nullptr)
         {
-            set_state_stop(Worker::FORMATINVAL);
+            set_state_stop(wu::EPCM_FORMATINVAL);
             return;
         }
 

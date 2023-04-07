@@ -1,5 +1,5 @@
 /**
- * @file threader.h
+ * @file util/threader.h
  * @author Robert Griffith
  */
 #pragma once
@@ -12,14 +12,14 @@ namespace whfa::util
 {
 
     /**
-     * @class util::Threader
+     * @class whfa::util::Threader
      * @brief abstract base class for a threadsafe parallel thread worker
      */
     class Threader
     {
     public:
         /**
-         * @struct util::Threader::State
+         * @struct whfa::util::Threader::State
          * @brief primitives describing thread operation, processing errors, and timestamp
          */
         struct State
@@ -32,8 +32,25 @@ namespace whfa::util
             int64_t timestamp;
         };
 
-        /// @brief callback type to be invoked when state is updated
-        using StateCallback = void (*)(const State &);
+        /**
+         * @class whfa::util::Threader::StateHandler
+         * @brief class for handling state callbacks
+         */
+        class StateHandler
+        {
+        public:
+            /**
+             * @brief destructor
+             */
+            virtual ~StateHandler();
+
+            /**
+             * @brief handle threader state
+             *
+             * @param state threader state to handle
+             */
+            virtual void handle(const State &state) = 0;
+        };
 
         /**
          * @brief destructor that sets state to terminate and joins thread
@@ -43,9 +60,9 @@ namespace whfa::util
         /**
          * @brief sets state to run thread loop
          *
-         * @param callback function to be invoked upon internal state changes
+         * @param handler state handler to be invoked upon internal state changes
          */
-        void start(StateCallback callback = nullptr);
+        void start(StateHandler *handler = nullptr);
 
         /**
          * @brief sets state to stop running thread loop and reset timestamp to 0
@@ -128,8 +145,8 @@ namespace whfa::util
     private:
         /// @brief internal state
         State _state;
-        /// @brief state callback method (nullptr if no callback)
-        StateCallback _callback;
+        /// @brief state callback handler (nullptr if no callback)
+        StateHandler *_handler;
         /// @brief true if thread should terminate, hidden logic not exposed in State
         bool _terminate;
         /// @brief codition variable for thread waiting and notifying

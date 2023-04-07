@@ -6,7 +6,7 @@ bindir := ./bin
 libdir := ./lib
 
 CXX := g++
-CXXFLAGS := -Wall -std=c++17 -Iinclude
+CXXFLAGS := -Wall -std=c++17 -Iinclude -I.
 LDFLAGS := -L$(libdir)
 LDLIBS := -l$(appname) -lavcodec -lavformat -lavutil -lasound -lpthread 
 
@@ -17,14 +17,17 @@ utilobjs := $(patsubst %.cpp, %.o, $(utilsrcs))
 pcmobjs := $(patsubst %.cpp, %.o, $(pcmsrcs))
 netobjs := $(patsubst %.cpp, %.o, $(netsrcs))
 
+libsrcs := $(utilsrcs) $(pcmsrcs) $(netsrcs)
+libobjs := $(utilobjs) $(pcmobjs) $(netobjs)
+
 testsrcs := $(shell find ./test -name "*.cpp")
 testobjs := $(patsubst %.cpp, %.o, $(testsrcs))
 
 appsrc := ./src/$(appname).cpp
 appobj := ./src/$(appname).o
 
-srcs := $(utilsrcs) $(pcmsrcs) $(netsrcs) $(testsrcs) $(appsrc)
-objs := $(utilobjs) $(pcmobjs) $(netobjs) $(testobjs) $(appobj)
+srcs :=  $(libsrcs) $(testsrcs) $(appsrc)
+objs := $(libobjs) $(testobjs) $(appobj)
 
 # ================ main targets ================
 

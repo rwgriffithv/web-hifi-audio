@@ -1,5 +1,5 @@
 /**
- * @file framehandler.h
+ * @file pcm/framehandler.h
  * @author Robert Griffith
  */
 #pragma once
@@ -13,7 +13,7 @@ namespace whfa::pcm
 {
 
     /**
-     * @class FrameHandler
+     * @class whfa::pcm::FrameHandler
      * @brief interface for defining common frame processing (stateful function pointer alternative)
      */
     class FrameHandler
@@ -25,7 +25,7 @@ namespace whfa::pcm
         virtual ~FrameHandler();
 
         /**
-         * @brief operate on libav frame
+         * @brief handle libav frame
          *
          * @param frame libav frame to handle
          * @return 0 on success, error code on failure

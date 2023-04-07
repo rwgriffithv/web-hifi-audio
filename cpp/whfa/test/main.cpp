@@ -1,183 +1,104 @@
 /**
- * @file main.cpp
+ * @file test/main.cpp
  * @author Robert Griffith
  */
-#include "pcm/decoder.h"
-#include "pcm/player.h"
-#include "pcm/reader.h"
-#include "pcm/writer.h"
+#include "test/net.h"
+#include "test/pcm.h"
 
-#include <condition_variable>
+#include <cstring>
 #include <iostream>
-#include <fstream>
-#include <mutex>
+#include <vector>
 
-namespace wp = whfa::pcm;
-namespace wu = whfa::util;
+namespace wt = whfa::test;
 
 namespace
 {
 
-    constexpr size_t __ERRBUFSZ = 256;
-
-    char __errbuf[__ERRBUFSZ];
-    wp::Context *__ctxt;
-    std::mutex __mtx;
-    std::condition_variable __cond;
-
-    void print_error(int averror)
-    {
-        if (av_strerror(averror, __errbuf, __ERRBUFSZ) != 0)
-        {
-            snprintf(__errbuf, __ERRBUFSZ, "no error description found");
-        }
-        std::cerr << "AVERROR (" << averror << ") : " << __errbuf << std::endl;
-    }
-
+    /**
+     * @brief print CLI usage
+     */
     void print_usage()
     {
         std::cout << "\
 usage:\n\
-   <application> <input url> -play <output device name>\n\
-   <application> <input url> -raw <output file name>\n\
-   <application> <input url> -wav <output file name>\n";
+   <application> <input url> -d <output device name> -p <port>\n\
+\n\
+flags specify options that specify optional tests\n\
+\n\
+-d <output device name>:\n\
+    test playback on specified device\n\
+-p <port>\n\
+    test networked capabilities (end-to-end) using specified port\n\
+\n";
     }
 
-    void set_context(wp::Context &c)
-    {
-        __ctxt = &c;
-    }
-
-    void state_cb(const wu::Threader::State &s, const char *str)
-    {
-        std::cerr << "CALLBACK (" << str << ")" << std::endl;
-        std::cerr << "TIMESTAMP: " << s.timestamp << std::endl;
-        if (s.error != 0)
-        {
-            print_error(s.error);
-            if (!s.run)
-            {
-                __ctxt->close();
-            }
-        }
-    }
-
-    void state_cb_r(const wu::Threader::State &s)
-    {
-        state_cb(s, "Reader");
-    }
-
-    void state_cb_d(const wu::Threader::State &s)
-    {
-        state_cb(s, "Decoder");
-    }
-
-    void state_cb_w(const wu::Threader::State &s)
-    {
-        state_cb(s, "Writer");
-        if (!s.run)
-        {
-            __cond.notify_one();
-        }
-    }
-
-    void state_cb_p(const wu::Threader::State &s)
-    {
-        state_cb(s, "Player");
-        if (!s.run)
-        {
-            __cond.notify_one();
-        }
-    }
 }
 
+/**
+ * @brief application entry point
+ *
+ * @param argc number of cli arguments
+ * @param argv cli arguments
+ * @return 0 on success, 1 on error
+ */
 int main(int argc, char **argv)
 {
-    if (argc != 4)
+    // must be at least two, and even
+    if (argc < 2 || argc & 1)
     {
         print_usage();
         return 1;
     }
 
-    wp::Context c;
-    set_context(c);
-
-    wp::Reader r(c);
-    wp::Decoder d(c);
-    wp::Player p(c);
-    wp::Writer w(c);
-
-    wu::Threader::State state;
-    int rv;
-
-    std::cout << "initializing libav formats & networking" << std::endl;
-    wp::Context::register_formats();
-    wp::Context::enable_networking();
-
-    std::cout << "openining " << argv[1] << std::endl;
-    rv = c.open(argv[1]);
-    if (rv != 0)
+    const char *url = argv[1];
+    std::vector<const char *> devs;
+    std::vector<const char *> ports;
+    bool flagerr = false;
+    for (int i = 2; i < argc; i += 2)
     {
-        std::cerr << "failed to open input: " << argv[1] << std::endl;
-        print_error(rv);
-        return 1;
+        const char *flag = argv[i];
+        if (strcmp(flag, "-d") == 0)
+        {
+            devs.push_back(argv[i + 1]);
+        }
+        else if (strcmp(flag, "-p") == 0)
+        {
+            ports.push_back(argv[i + 1]);
+        }
+        else
+        {
+            std::cerr << "ignoring unrecognized argument: " << flag << std::endl;
+            flagerr = true;
+        }
+    }
+    if (flagerr)
+    {
+        print_usage();
     }
 
-    std::cout << "parsing option: " << argv[2] << std::endl;
-    if (strcmp(argv[2], "-play") == 0)
+    // test net
+    for (const char *p_s : ports)
     {
-        // playing to device
-        if (!p.open(argv[3]))
+        const long p_l = std::strtol(p_s, nullptr, 0);
+        if (p_l < 0 || p_l > 0xFFFF)
         {
-            std::cerr << "failed to open device output: " << argv[3] << std::endl;
-            p.get_state(state);
-            print_error(state.error);
-            return 1;
+            std::cerr << "WARNING: port string " << p_s << "was outside of valid 16-bit range" << std::endl;
         }
-        p.configure(); // using default resample & latency
-        p.start(state_cb_p);
-    }
-    else
-    {
-        wp::Writer::OutputType ot;
-        bool valid = false;
-        if (strcmp(argv[2], "-raw") == 0)
-        {
-            ot = wp::Writer::OutputType::FILE_RAW;
-            valid = true;
-        }
-        else if (strcmp(argv[2], "-wav") == 0)
-        {
-            ot = wp::Writer::OutputType::FILE_WAV;
-            valid = true;
-        }
-        if (!valid)
-        {
-            std::cerr << "invalid option: " << argv[2] << std::endl;
-            print_usage();
-            return 1;
-        }
-        // writing to file
-        if (!w.open(argv[3], ot))
-        {
-            std::cerr << "failed to open file output: " << argv[3] << std::endl;
-            w.get_state(state);
-            print_error(state.error);
-            return 1;
-        }
-        w.start(state_cb_w);
+        const uint16_t p = static_cast<uint16_t>(p_l & 0xFFFF);
+        std::cout << "testing net functions with port: " << p << std::endl;
+        wt::test_tcpconnection(p);
+        wt::test_tcpramfile(p);
     }
 
-    d.start(state_cb_d);
-    r.start(state_cb_r);
-
-    std::unique_lock<std::mutex> lk(__mtx);
-    __cond.wait(lk);
-
-    std::cout << "DONE: no longer waiting" << std::endl;
-
-    // all threaders join threads in destructor
-    // context, player, and writer both close in destructor
+    // test pcm
+    std::cout << "testing base pcm functionality with url: " << url << std::endl;
+    wt::test_write_raw(url);
+    wt::test_write_wav(url);
+    for (const char *d : devs)
+    {
+        std::cout << "testing play function with device: " << d << std::endl;
+        wt::test_play(url, d);
+    }
 
     return 0;
 }

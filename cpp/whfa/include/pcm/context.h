@@ -1,5 +1,5 @@
 /**
- * @file context.h
+ * @file pcm/context.h
  * @author Robert Griffith
  */
 #pragma once
@@ -26,22 +26,16 @@ namespace whfa::pcm
     {
     public:
         /// @brief default packet queue capacity
-        static constexpr size_t DEF_PKT_QCAP = 1000;
+        static constexpr size_t DEF_PKT_QCAP = 1024;
         /// @brief default frame queue capacity
-        static constexpr size_t DEF_FRM_QCAP = 1000;
-        
+        static constexpr size_t DEF_FRM_QCAP = 1024;
+
         /**
          * @class whfa::pcm::Context::Worker
          * @brief simple base Threader class for working with Context
          */
         class Worker : public util::Threader
         {
-        public:
-            /// @brief error code for invalid codec
-            static constexpr int CODECINVAL = 0x10;
-            /// @brief error code for invalid format
-            static constexpr int FORMATINVAL = 0x20;
-
         protected:
             /**
              * @brief hidden constructor for derived classes to use
