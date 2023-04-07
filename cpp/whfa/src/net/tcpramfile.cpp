@@ -3,7 +3,6 @@
  * @author Robert Griffith
  */
 #include "net/tcpramfile.h"
-#include "util/error.h"
 
 #include <cstring>
 
@@ -127,16 +126,22 @@ namespace whfa::net
     uint64_t TCPRAMFile::read(uint8_t *buf, uint64_t size)
     {
         std::lock_guard<std::mutex> rd_lk(_read_mtx);
-        size = std::min(_filesz - _read_pos, size);
+        size = std::min(size, _filesz - _read_pos);
         if (_data == nullptr || size == 0)
         {
             return 0;
         }
-        std::unique_lock<std::mutex> rv_lk(_recv_mtx);
-        _recv_cond.wait(rv_lk, [=]
-                        { return _recv_pos - _read_pos >= size; });
-        rv_lk.unlock();
-        memcpy(buf, _data, size);
+        std::unique_lock<std::mutex> lk(_mtx);
+        _recv_cond.wait(lk, [=]
+                        { return !get_state().run || (_recv_pos >= _read_pos + size); });
+        const bool invalid = _recv_pos < _read_pos;
+        size = std::min(size, _recv_pos - _read_pos);
+        lk.unlock();
+        if (invalid)
+        {
+            return 0;
+        }
+        memcpy(buf, &(_data[_read_pos]), size);
         _read_pos += size;
         return size;
     }
@@ -167,17 +172,21 @@ namespace whfa::net
         default:
             return false;
         }
-        const uint64_t pos = neg ? base - mag : base + mag;
+        const uint64_t pos = neg ? (base - mag) : (base + mag);
         if ((neg && pos > base) || (!neg && pos < base))
         {
             return false;
         }
-        std::unique_lock<std::mutex> rv_lk(_recv_mtx);
-        _recv_cond.wait(rv_lk, [=]
-                        { return _recv_pos >= pos; });
-        rv_lk.unlock();
-        _read_pos = pos;
-        return true;
+        std::unique_lock<std::mutex> lk(_mtx);
+        _recv_cond.wait(lk, [=]
+                        { return !get_state().run || (_recv_pos >= pos); });
+        const bool success = _recv_pos >= pos;
+        lk.unlock();
+        if (success)
+        {
+            _read_pos = pos;
+        }
+        return success;
     }
 
     void TCPRAMFile::close()
@@ -212,15 +221,12 @@ namespace whfa::net
         }
         else if (_conn.recv(&(_data[_recv_pos]), sz))
         {
-            {
-                std::lock_guard<std::mutex> rv_lk(_recv_mtx);
-                _recv_pos += sz;
-            }
-            _recv_cond.notify_one();
+            _recv_pos += sz;
         }
         else
         {
-            set_state_pause(errno);
+            set_state_pause(wu::ENET_TXFAIL);
         }
+        _recv_cond.notify_one();
     }
 }

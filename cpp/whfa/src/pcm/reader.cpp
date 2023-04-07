@@ -3,7 +3,6 @@
  * @author Robert Griffith
  */
 #include "pcm/reader.h"
-#include "util/error.h"
 
 namespace wu = whfa::util;
 

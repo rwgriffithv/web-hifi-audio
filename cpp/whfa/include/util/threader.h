@@ -4,6 +4,8 @@
  */
 #pragma once
 
+#include "util/error.h"
+
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -117,7 +119,7 @@ namespace whfa::util
          *
          * @param error error value to set
          */
-        void set_state_stop(int error = 0);
+        void set_state_stop(int error = whfa::util::ENONE);
 
         /**
          * @brief not threadsafe implementation of pause() while setting error
@@ -125,7 +127,7 @@ namespace whfa::util
          *
          * @param error error value to set
          */
-        void set_state_pause(int error = 0);
+        void set_state_pause(int error = whfa::util::ENONE);
 
         /**
          * @brief not threadsafe method to set state error

@@ -34,6 +34,9 @@ namespace whfa::util
         {
             switch (error)
             {
+            case ENONE:
+                snprintf(__errbuf, __ERRBUFSZ, "no error");
+                break;
             case ENET_CONNFAIL:
                 snprintf(__errbuf, __ERRBUFSZ, "connection failed to establish");
                 break;

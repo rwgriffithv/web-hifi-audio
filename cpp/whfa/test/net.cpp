@@ -6,7 +6,6 @@
 
 #include "net/tcpconnection.h"
 #include "net/tcpramfile.h"
-#include "util/error.h"
 
 #include <cstring>
 #include <iostream>
@@ -171,7 +170,7 @@ namespace
      * @param port local port to test connection with self
      * @param[out] bufs buffers to read file into
      */
-    void test_tcpramfile_server_noseek(uint16_t port, uint8_t *bufs)
+    void test_tcpramfile_server(uint16_t port, uint8_t *bufs)
     {
         std::unique_lock<std::mutex> lk(__mtx);
         if (!__f.open(port))
@@ -180,20 +179,18 @@ namespace
             wu::Threader::State s;
             __f.get_state(s);
             wu::print_error(s.error);
+            return;
         }
-        else
+        __f.start();
+        size_t i = 0;
+        size_t rv;
+        while ((rv = __f.read(&(bufs[i]), __BUFSZ)) != 0)
         {
-            __f.start();
-            size_t i = 0;
-            size_t rv;
-            while ((rv = __f.read(&(bufs[i]), __BUFSZ)) != 0)
+            if (rv != __BUFSZ)
             {
-                if (rv != __BUFSZ)
-                {
-                    std::cerr << __PRFXSRVR << "expected to read " << __BUFSZ << " bytes at pos " << i << " but received " << rv << std::endl;
-                }
-                i += rv;
+                std::cerr << __PRFXSRVR << "expected to read " << __BUFSZ << " bytes at pos " << i << " but received " << rv << std::endl;
             }
+            i += rv;
         }
         __f.close();
     }
@@ -213,60 +210,65 @@ namespace
             wu::Threader::State s;
             __f.get_state(s);
             wu::print_error(s.error);
+            return;
         }
-        else
+        __f.start();
+        size_t rv;
+        // alternating seeking reads for last half of file
+        size_t i = __NBUFSENDS * __BUFSZ;
+        if (!__f.seek(i, SEEK_CUR))
         {
-            __f.start();
-            size_t rv;
-            // alternating seeking reads for last half of file
-            size_t i = __NBUFSENDS * __BUFSZ;
-            if (!__f.seek(i, SEEK_CUR))
+            std::cerr << __PRFXSRVR << "failed initial seek to middle of file" << std::endl;
+            wu::Threader::State s;
+            __f.get_state(s);
+            wu::print_error(s.error);
+            return;
+        }
+        while (i < __NBUFS * __BUFSZ)
+        {
+            if (!__f.seek(__BUFSZ, SEEK_CUR))
             {
-                std::cerr << __PRFXSRVR << "failed initial seek to middle of file" << std::endl;
+                std::cerr << __PRFXSRVR << "failed seek forward to byte " << i + __BUFSZ << std::endl;
                 return;
             }
-            while (i < __NBUFS * __BUFSZ)
+            if ((rv = __f.read(&(bufs[i + __BUFSZ]), __BUFSZ)) != __BUFSZ)
             {
-                if (!__f.seek(i + __BUFSZ, SEEK_CUR))
-                {
-                    std::cerr << __PRFXSRVR << "failed seek to byte " << i + __BUFSZ << std::endl;
-                    return;
-                }
-                if ((rv = __f.read(&(bufs[i + __BUFSZ]), __BUFSZ)) != __BUFSZ)
-                {
-                    std::cerr << __PRFXSRVR << "failed to read into byte " << i + __BUFSZ << std::endl;
-                    std::cerr << __PRFXSRVR << "only read " << rv << " of " << __BUFSZ << " bytes" << std::endl;
-                    return;
-                }
-                if (!__f.seek(-2 * __BUFSZ, SEEK_CUR))
-                {
-                    std::cerr << __PRFXSRVR << "failed seek to byte " << i << std::endl;
-                    return;
-                }
-                if ((rv = __f.read(&(bufs[i]), __BUFSZ)) != __BUFSZ)
-                {
-                    std::cerr << __PRFXSRVR << "failed to read into byte " << i << std::endl;
-                    std::cerr << __PRFXSRVR << "only read " << rv << " of " << __BUFSZ << " bytes" << std::endl;
-                    return;
-                }
-                i += 2 * __BUFSZ;
+                std::cerr << __PRFXSRVR << "failed to read into byte " << i + __BUFSZ << std::endl;
+                std::cerr << __PRFXSRVR << "only read " << rv << " of " << __BUFSZ << " bytes" << std::endl;
+                return;
             }
-            // straight through reads for first half of file
-            i = 0;
+            if (!__f.seek(-2 * __BUFSZ, SEEK_CUR))
+            {
+                std::cerr << __PRFXSRVR << "failed seek backward to byte " << i << std::endl;
+                return;
+            }
+            if ((rv = __f.read(&(bufs[i]), __BUFSZ)) != __BUFSZ)
+            {
+                std::cerr << __PRFXSRVR << "failed to read into byte " << i << std::endl;
+                std::cerr << __PRFXSRVR << "only read " << rv << " of " << __BUFSZ << " bytes" << std::endl;
+                return;
+            }
+            i += 2 * __BUFSZ;
             if (!__f.seek(i, SEEK_SET))
             {
-                std::cerr << __PRFXSRVR << "failed midway seek to beginning of file" << std::endl;
-                return;
+                std::cerr << __PRFXSRVR << "failed to seek absolutely to byte " << i << std::endl;
             }
-            while (i < __NBUFSENDS * __BUFSZ)
+        }
+        // straight through reads for first half of file
+        i = 0;
+        if (!__f.seek(i, SEEK_SET))
+        {
+            std::cerr << __PRFXSRVR << "failed midway seek to beginning of file" << std::endl;
+            return;
+        }
+        while (i < __NBUFSENDS * __BUFSZ)
+        {
+            rv = __f.read(&(bufs[i]), __BUFSZ);
+            if (rv != __BUFSZ)
             {
-                rv = __f.read(&(bufs[i]), __BUFSZ);
-                if (rv != __BUFSZ)
-                {
-                    std::cerr << __PRFXSRVR << "expected to read " << __BUFSZ << " bytes at pos " << i << " but received " << rv << std::endl;
-                }
-                i += rv;
+                std::cerr << __PRFXSRVR << "expected to read " << __BUFSZ << " bytes at pos " << i << " but received " << rv << std::endl;
             }
+            i += rv;
         }
         __f.close();
     }
@@ -299,9 +301,9 @@ namespace whfa::test
         // no seeking, direct until read returns 0
         std::cout << "testing with no seeking" << std::endl;
         memset(bufs_s, 0, __NBUFS * __BUFSZ);
-        std::thread t_c_n(test_tcpramfile_client, port, bufs_c);
-        test_tcpramfile_server_noseek(port, bufs_s);
-        t_c_n.join();
+        std::thread t_c(test_tcpramfile_client, port, bufs_c);
+        test_tcpramfile_server(port, bufs_s);
+        t_c.join();
         compare_bufs(bufs_c, bufs_s);
         // seeking allowed, recopy in case of discrepancy
         std::cout << "testing with seeking" << std::endl;

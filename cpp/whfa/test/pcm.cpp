@@ -8,7 +8,6 @@
 #include "pcm/player.h"
 #include "pcm/reader.h"
 #include "pcm/writer.h"
-#include "util/error.h"
 
 #include <condition_variable>
 #include <iostream>
@@ -174,6 +173,7 @@ namespace
             break;
         case wp::Writer::OutputType::FILE_WAV:
             ofname.append(".wav");
+            break;
         }
         std::cout << "opening output file: " << ofname << std::endl;
         if (!__w.open(ofname.c_str(), ot))

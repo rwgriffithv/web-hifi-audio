@@ -121,8 +121,6 @@ namespace whfa::net
 
         /// @brief current socket recv byte position
         uint64_t _recv_pos;
-        /// @brief mutex for recv position synchronization
-        std::mutex _recv_mtx;
         /// @brief condition variable for notifying of recv updates
         std::condition_variable _recv_cond;
     };

@@ -8,7 +8,6 @@
 #include "pcm/player.h"
 #include "pcm/reader.h"
 #include "pcm/writer.h"
-#include "util/error.h"
 
 #include <condition_variable>
 #include <iostream>

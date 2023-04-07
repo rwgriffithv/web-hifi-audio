@@ -9,6 +9,9 @@
 namespace whfa::util
 {
     
+    /// @brief no error
+    constexpr int ENONE = 0;
+
     /// @brief error code for failed established connection
     constexpr int ENET_CONNFAIL = 0x10;
     /// @brief error code for failed transmit
