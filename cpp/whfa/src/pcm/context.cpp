@@ -40,14 +40,8 @@ namespace
      */
     inline void free_context(AVFormatContext *&format, AVCodecContext *&codec, int &stream_idx)
     {
-        if (codec != nullptr)
-        {
-            free_codec(codec);
-        }
-        if (format != nullptr)
-        {
-            free_format(format);
-        }
+        free_codec(codec);
+        free_format(format);
         stream_idx = -1;
     }
 

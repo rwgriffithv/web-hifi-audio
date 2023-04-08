@@ -25,7 +25,7 @@ namespace whfa::util
             std::lock_guard<std::mutex> lock(_mtx);
             _terminate = true;
         }
-        _cond.notify_one();
+        _cond.notify_all();
         _thread.join();
     }
 
@@ -36,7 +36,7 @@ namespace whfa::util
             _handler = handler;
             set_state_start();
         }
-        _cond.notify_one();
+        _cond.notify_all();
     }
 
     void Threader::stop()
@@ -83,9 +83,7 @@ namespace whfa::util
             {
                 break;
             }
-
             execute_loop_body();
-
             lock.unlock();
         } while (true);
     }

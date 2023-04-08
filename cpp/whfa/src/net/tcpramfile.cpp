@@ -191,6 +191,7 @@ namespace whfa::net
 
     void TCPRAMFile::close()
     {
+        std::lock_guard<std::mutex> lk(_mtx);
         std::lock_guard<std::mutex> rd_lk(_read_mtx);
         close_ramfile(_conn, _data);
         set_state_stop();
@@ -227,6 +228,6 @@ namespace whfa::net
         {
             set_state_pause(wu::ENET_TXFAIL);
         }
-        _recv_cond.notify_one();
+        _recv_cond.notify_all();
     }
 }

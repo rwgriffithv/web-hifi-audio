@@ -66,7 +66,8 @@ usage:\n\
         {
             std::cerr << "CALLBACK (" << _name << ")" << std::endl;
             std::cerr << "TIMESTAMP: " << s.timestamp << std::endl;
-            if (s.error != 0)
+            std::cerr << "RUNNING: " << s.run << std::endl;
+            if (s.error != wu::ENONE)
             {
                 wu::print_error(s.error);
                 if (!s.run)
@@ -137,6 +138,12 @@ int main(int argc, char **argv)
     std::condition_variable wait_cond;
 
     wp::Context c;
+    
+    // state handlers instantiated first for proper destruction order
+    BaseSH r_sh(c, "Reader");
+    BaseSH d_sh(c, "Decoder");
+    NotifierSH p_sh(c, wait_cond, "Player");
+    NotifierSH w_sh(c, wait_cond, "Writer");
 
     wp::Reader r(c);
     wp::Decoder d(c);
@@ -144,10 +151,6 @@ int main(int argc, char **argv)
     wp::Writer w(c);
 
     wu::Threader::State state;
-    BaseSH r_sh(c, "Reader");
-    BaseSH d_sh(c, "Decoder");
-    NotifierSH p_sh(c, wait_cond, "Player");
-    NotifierSH w_sh(c, wait_cond, "Writer");
     int rv;
 
     std::cout << "initializing libav formats & networking" << std::endl;
@@ -213,7 +216,6 @@ int main(int argc, char **argv)
 
     std::unique_lock<std::mutex> wait_lk(wait_mtx);
     wait_cond.wait(wait_lk);
-
     std::cout << "DONE: no longer waiting" << std::endl;
 
     // all threaders join threads in destructor
