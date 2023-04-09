@@ -106,8 +106,23 @@ namespace
         std::condition_variable *_cv;
     };
 
+    /// @brief local mutex to synchronize local object usage
+    std::mutex __mtx;
+    /// @brief local condition variable handle notifications
+    std::condition_variable __cond;
+
     /// @brief local pcm context to reuse
     wp::Context __c;
+
+    /// @brief local pcm reader state handler to reuse
+    BaseSH __r_sh(__c, "Reader");
+    /// @brief local pcm decoder state handler to reuse
+    BaseSH __d_sh(__c, "Decoder");
+    /// @brief local pcm player state handler to reuse
+    NotifierSH __p_sh(__c, __cond, "Player");
+    /// @brief local pcm writer state handler to reuse
+    NotifierSH __w_sh(__c, __cond, "Writer");
+
     /// @brief local pcm reader to reuse
     wp::Reader __r(__c);
     /// @brief local pcm decoder to reuse
@@ -116,11 +131,6 @@ namespace
     wp::Player __p(__c);
     /// @brief local pcm writer to reuse
     wp::Writer __w(__c);
-
-    /// @brief local mutex to synchronize local object usage
-    std::mutex __mtx;
-    /// @brief local condition variable handle notifications
-    std::condition_variable __cond;
 
     /**
      * @brief initialize static pcm context (libav configuration)
@@ -151,10 +161,6 @@ namespace
     {
         init_context();
         wu::Threader::State state;
-        BaseSH r_sh(__c, "Reader");
-        BaseSH d_sh(__c, "Decoder");
-        NotifierSH p_sh(__c, __cond, "Player");
-        NotifierSH w_sh(__c, __cond, "Writer");
         int rv;
 
         std::cout << "openining input: " << url << std::endl;
@@ -185,11 +191,11 @@ namespace
         }
 
         std::cout << "starting writer thread" << std::endl;
-        __w.start(&p_sh);
+        __w.start(&__p_sh);
         std::cout << "starting decoder thread" << std::endl;
-        __d.start(&d_sh);
+        __d.start(&__d_sh);
         std::cout << "starting reader thread" << std::endl;
-        __r.start(&r_sh);
+        __r.start(&__r_sh);
     }
 }
 
@@ -203,10 +209,6 @@ namespace whfa::test
 
         init_context();
         wu::Threader::State state;
-        BaseSH r_sh(__c, "Reader");
-        BaseSH d_sh(__c, "Decoder");
-        NotifierSH p_sh(__c, __cond, "Player");
-        NotifierSH w_sh(__c, __cond, "Writer");
         int rv;
 
         std::cout << "openining input: " << url << std::endl;
@@ -229,11 +231,11 @@ namespace whfa::test
         __p.configure(); // using default resample & latency
 
         std::cout << "starting player thread" << std::endl;
-        __p.start(&p_sh);
+        __p.start(&__p_sh);
         std::cout << "starting decoder thread" << std::endl;
-        __d.start(&d_sh);
+        __d.start(&__d_sh);
         std::cout << "starting reader thread" << std::endl;
-        __r.start(&r_sh);
+        __r.start(&__r_sh);
 
         std::cout << "waiting to finish..." << std::endl;
         __cond.wait(lk);
