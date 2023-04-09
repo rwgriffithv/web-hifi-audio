@@ -7,8 +7,6 @@
 
 #include <array>
 
-namespace wu = whfa::util;
-
 namespace
 {
 
@@ -471,7 +469,7 @@ namespace whfa::pcm
 
         if (!_ctxt->get_stream_spec(_spec))
         {
-            set_state_stop(wu::EPCM_FORMATINVAL | wu::EPCM_CODECINVAL);
+            set_state_stop(util::EINVSTREAM);
             return false;
         }
 

@@ -88,7 +88,7 @@ namespace whfa::util
         } while (true);
     }
 
-    const Threader::State &Threader::get_state()
+    const Threader::State &Threader::get_state() const
     {
         return _state;
     }

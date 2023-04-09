@@ -5,8 +5,6 @@
 #include "pcm/decoder.h"
 #include "util/error.h"
 
-namespace wu = whfa::util;
-
 namespace whfa::pcm
 {
 
@@ -47,7 +45,7 @@ namespace whfa::pcm
         std::mutex *cdc_mtx = _ctxt->get_codec(cdc_ctxt);
         if (cdc_mtx == nullptr)
         {
-            set_state_stop(wu::EPCM_CODECINVAL);
+            set_state_stop(util::EINVCODEC);
             return;
         }
 

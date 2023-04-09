@@ -7,8 +7,6 @@
 
 #include <array>
 
-namespace wu = whfa::util;
-
 namespace
 {
 
@@ -203,7 +201,7 @@ namespace
         if (fmt_idx >= __SNDFMT_MAP.size())
         {
             // unsupported format
-            return wu::EPCM_CODECINVAL;
+            return whfa::util::EINVFORMAT;
         }
         snd_pcm_format_t format = __SNDFMT_MAP[fmt_idx];
         // special case for 24 bit samples packed in 32 bit widths (handled by libasound without subsampling)
@@ -216,7 +214,7 @@ namespace
         if (format != SND_PCM_FORMAT_S24 && spec.bitdepth < bw)
         {
             // unsupported subsample format
-            return wu::EPCM_CODECINVAL;
+            return whfa::util::EINVCODEC;
         }
         const bool planar = av_sample_fmt_is_planar(spec.format) == 1;
         const snd_pcm_access_t access = planar
@@ -307,7 +305,7 @@ namespace whfa::pcm
 
         if (!_ctxt->get_stream_spec(_spec))
         {
-            set_state_stop(wu::EPCM_FORMATINVAL | wu::EPCM_CODECINVAL);
+            set_state_stop(util::EINVSTREAM);
             return false;
         }
 

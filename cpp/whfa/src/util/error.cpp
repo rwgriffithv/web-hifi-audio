@@ -9,6 +9,7 @@ extern "C"
 #include <libavutil/error.h>
 }
 
+#include <cstring>
 #include <iostream>
 
 namespace
@@ -29,33 +30,27 @@ namespace whfa::util
 
     void stream_error(std::ostream &os, int error)
     {
-        char __errbuf[__ERRBUFSZ];
-        if (av_strerror(error, __errbuf, __ERRBUFSZ) != 0)
+        char errbuf[__ERRBUFSZ];
+        switch (error)
         {
-            switch (error)
+        case ENONE:
+            snprintf(errbuf, __ERRBUFSZ, "WHFA no error");
+            break;
+        case EINVCODEC:
+            snprintf(errbuf, __ERRBUFSZ, "WHFA invalid libav codec context");
+            break;
+        case EINVFORMAT:
+            snprintf(errbuf, __ERRBUFSZ, "WHFA invalid libav format context");
+            break;
+        case EINVSTREAM:
+            snprintf(errbuf, __ERRBUFSZ, "WHFA invalid libav stream (format and/or context)");
+            break;
+        default:
+            if (av_strerror(error, errbuf, __ERRBUFSZ) != 0)
             {
-            case ENONE:
-                snprintf(__errbuf, __ERRBUFSZ, "no error");
-                break;
-            case ENET_CONNFAIL:
-                snprintf(__errbuf, __ERRBUFSZ, "connection failed to establish");
-                break;
-            case ENET_TXFAIL:
-                snprintf(__errbuf, __ERRBUFSZ, "tranmit failed");
-                break;
-            case EPCM_CODECINVAL:
-                snprintf(__errbuf, __ERRBUFSZ, "invalid libav codec context");
-                break;
-            case EPCM_FORMATINVAL:
-                snprintf(__errbuf, __ERRBUFSZ, "invalid libav format context");
-                break;
-            case EPCM_CODECINVAL | EPCM_FORMATINVAL:
-                snprintf(__errbuf, __ERRBUFSZ, "invalid libav format & codec context");
-            default:
-                snprintf(__errbuf, __ERRBUFSZ, "no error description found");
+                strncpy(errbuf, strerror_r(error, errbuf, __ERRBUFSZ), __ERRBUFSZ);
             }
         }
-        os << "ERROR (" << error << ") : " << __errbuf << std::endl;
+        os << "ERROR (" << error << ") : " << errbuf << std::endl;
     }
-
 }

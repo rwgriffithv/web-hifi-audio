@@ -4,8 +4,6 @@
  */
 #include "pcm/reader.h"
 
-namespace wu = whfa::util;
-
 namespace
 {
 
@@ -41,7 +39,7 @@ namespace whfa::pcm
         std::mutex *fmt_mtx = _ctxt->get_format(fmt_ctxt, s_idx);
         if (fmt_mtx == nullptr)
         {
-            err = wu::EPCM_FORMATINVAL;
+            err = util::EINVFORMAT;
             stop = true;
         }
         else
@@ -65,7 +63,7 @@ namespace whfa::pcm
                 std::mutex *cdc_mtx = _ctxt->get_codec(cdc_ctxt);
                 if (cdc_mtx == nullptr)
                 {
-                    err = wu::EPCM_CODECINVAL;
+                    err = util::EINVCODEC;
                     stop = true;
                 }
                 else
@@ -102,7 +100,7 @@ namespace whfa::pcm
         std::mutex *fmt_mtx = _ctxt->get_format(fmt_ctxt, s_idx);
         if (fmt_mtx == nullptr)
         {
-            err = wu::EPCM_FORMATINVAL;
+            err = util::EINVFORMAT;
             stop = true;
         }
         else
@@ -125,7 +123,7 @@ namespace whfa::pcm
                 std::mutex *cdc_mtx = _ctxt->get_codec(cdc_ctxt);
                 if (cdc_mtx == nullptr)
                 {
-                    err = wu::EPCM_CODECINVAL;
+                    err = util::EINVCODEC;
                     stop = true;
                 }
                 else
@@ -165,7 +163,7 @@ namespace whfa::pcm
         fmt_mtx = _ctxt->get_format(fmt_ctxt, s_idx);
         if (fmt_mtx == nullptr)
         {
-            set_state_stop(wu::EPCM_FORMATINVAL);
+            set_state_stop(util::EINVFORMAT);
             return;
         }
 

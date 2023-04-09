@@ -138,7 +138,7 @@ int main(int argc, char **argv)
     std::condition_variable wait_cond;
 
     wp::Context c;
-    
+
     // state handlers instantiated first for proper destruction order
     BaseSH r_sh(c, "Reader");
     BaseSH d_sh(c, "Decoder");

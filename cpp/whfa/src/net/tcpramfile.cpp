@@ -6,8 +6,6 @@
 
 #include <cstring>
 
-namespace wu = whfa::util;
-
 namespace
 {
 
@@ -89,11 +87,11 @@ namespace whfa::net
         bool success = false;
         if (!_conn.connect(addr, port))
         {
-            set_state_stop(wu::ENET_CONNFAIL);
+            set_state_stop(errno);
         }
         else if (!init_ramfile(_conn, _data, _filesz, _read_pos, _recv_pos))
         {
-            set_state_stop(wu::ENET_TXFAIL);
+            set_state_stop(errno);
         }
         else
         {
@@ -110,11 +108,11 @@ namespace whfa::net
         bool success = false;
         if (!_conn.accept(port))
         {
-            set_state_stop(wu::ENET_CONNFAIL);
+            set_state_stop(errno);
         }
         else if (!init_ramfile(_conn, _data, _filesz, _read_pos, _recv_pos))
         {
-            set_state_stop(wu::ENET_TXFAIL);
+            set_state_stop(errno);
         }
         else
         {
@@ -226,7 +224,7 @@ namespace whfa::net
         }
         else
         {
-            set_state_pause(wu::ENET_TXFAIL);
+            set_state_pause(errno);
         }
         _recv_cond.notify_all();
     }

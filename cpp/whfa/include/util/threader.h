@@ -105,7 +105,7 @@ namespace whfa::util
          *
          * @return internal state for reading
          */
-        const State &get_state();
+        const State &get_state() const;
 
         /**
          * @brief not threadsafe implementation of start()
@@ -119,7 +119,7 @@ namespace whfa::util
          *
          * @param error error value to set
          */
-        void set_state_stop(int error = whfa::util::ENONE);
+        void set_state_stop(int error = ENONE);
 
         /**
          * @brief not threadsafe implementation of pause() while setting error
@@ -127,7 +127,7 @@ namespace whfa::util
          *
          * @param error error value to set
          */
-        void set_state_pause(int error = whfa::util::ENONE);
+        void set_state_pause(int error = ENONE);
 
         /**
          * @brief not threadsafe method to set state error

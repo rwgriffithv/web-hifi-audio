@@ -274,7 +274,7 @@ namespace whfa::util
          *
          * @return capacity of queue
          */
-        const size_t get_capacity()
+        size_t get_capacity() const
         {
             return _capacity;
         }
@@ -284,7 +284,7 @@ namespace whfa::util
          *
          * @return number of items in queue
          */
-        const size_t get_size()
+        size_t get_size()
         {
             std::lock_guard<std::mutex> pop_lk(_pop_mtx);
             std::lock_guard<std::mutex> push_lk(_push_mtx);

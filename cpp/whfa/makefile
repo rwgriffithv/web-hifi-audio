@@ -6,7 +6,7 @@ bindir := ./bin
 libdir := ./lib
 
 CXX := g++
-CXXFLAGS := -Wall -std=c++17 -Iinclude -I.
+CXXFLAGS := -Wall -std=c++17 -Iinclude -I. -O2
 LDFLAGS := -L$(libdir)
 LDLIBS := -l$(appname) -lavcodec -lavformat -lavutil -lasound -lpthread 
 

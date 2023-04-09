@@ -115,7 +115,7 @@ namespace whfa::pcm
          * @brief get stream specification for currently opened format & codec
          *
          * @param[out] spec stream specification
-         * @return false if format & codec are invalid
+         * @return false if format or codec are invalid (invalid stream)
          */
         bool get_stream_spec(StreamSpec &spec);
 
